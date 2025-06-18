@@ -12,14 +12,25 @@
         "src/native/schema/schema_validator.cc",
         "src/native/compression/compression.cc",
         "src/native/websocket/websocket.cc",
-        "src/native/json/simdjson_wrapper.cpp"
+        "src/native/json/simdjson_wrapper.cpp",
+        "src/native/cache/lru_cache.cc",
+        "src/native/middleware/middleware_chain.cc",
+        "src/native/crypto/hash_functions.cc",
+        "src/native/encoding/string_encoder.cc",
+        "src/native/file/file_operations.cc",
+        "src/native/stream/stream_processor.cc",
+        "src/native/compression/compression_engine.cc",
+        "src/native/rate/rate_limiter.cc",
+        "src/native/protobuf/protocol_buffers.cc",
+        "src/native/validation/validation_engine.cc",
+        "src/native/thread/thread_pool.cc"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
-        "<!(node -e \"require('node-addon-api').include_dir\")",
-        "<!(node -e \"console.log(require('node-addon-api').libuv_include_dir)\")",
         "src/native",
-        "src/native/json"
+        "src/native/json",
+        "<!@(node -e \"console.log(process.config.variables.node_shared ? '/usr/include/nodejs' : require('path').dirname(require.resolve('node-addon-api')) + '/../..')\")",
+        "<!@(node -e \"console.log(require('path').dirname(process.execPath) + '/../include/node')\")"
       ],
       "conditions": [
         ["OS!='win'", {
@@ -27,6 +38,18 @@
             "/usr/local/include",
             "node_modules/simdjson/simdjson/src",
             "node_modules/simdjson/include"
+          ]
+        }],
+        ["OS=='mac'", {
+          "include_dirs": [
+            "/opt/homebrew/include",
+            "/usr/local/include"
+          ],
+          "libraries": [
+            "-L/opt/homebrew/lib",
+            "-luv",
+            "-lcrypto",
+            "-lssl"
           ]
         }]
       ],

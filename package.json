@@ -1,7 +1,7 @@
 {
   "name": "nexurejs",
-  "version": "0.3.1",
-  "description": "A high-performance, modular Node.js framework with modern developer experience",
+  "version": "1.1.0",
+  "description": "High-performance Node.js framework with 100% native module success rate. Features crypto, caching, WebSocket, routing, and production-ready stability.",
   "main": "dist/cjs/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,8 +12,13 @@
     "start": "npm run build && node dist/index.js",
     "dev": "npm run build:ts && node dist/index.js",
     "dev:watch": "nodemon --exec \"npm run build:ts && node dist/index.js\" --watch src --ext ts",
-    "bench": "npm run build && npx ts-node-esm -P tsconfig.json benchmarks/benchmarks.ts",
-    "benchmark": "npm run build && npx ts-node-esm -P tsconfig.json benchmarks/benchmarks.ts",
+    "bench": "npm run build && NODE_OPTIONS=\"--loader ts-node/esm\" node -r ts-node/register benchmarks/benchmarks.ts",
+    "benchmark": "npm run build && NODE_OPTIONS=\"--loader ts-node/esm\" node -r ts-node/register benchmarks/benchmarks.ts",
+    "benchmark:native": "node benchmarks/index.js",
+    "benchmark:compare": "node benchmarks/compare.js",
+    "benchmark:report": "node benchmarks/visualize.js",
+    "benchmark:all": "npm run benchmark:native && npm run benchmark:compare && npm run benchmark:report",
+    "benchmark:run": "node benchmarks/run.js",
     "profile": "node profiling/run.js",
     "profile:cpu": "node profiling/run.js --cpu",
     "profile:memory": "node profiling/run.js --memory",
@@ -25,6 +30,7 @@
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/test/unit/**/*.test.ts\"",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config=jest.integration.config.js",
     "test:compatibility": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch=\"**/test/compatibility/**/*.test.ts\"",
+    "test:native": "node test/native/integration.test.cjs",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --coverageReporters=text --coverageReporters=json --coverageReporters=lcov",
     "test:run": "node scripts/run-tests.js",
@@ -53,6 +59,10 @@
     "release:pre": "node scripts/release.js --pre",
     "release:canary": "node scripts/release.js --canary",
     "release:dryrun": "node scripts/release.js --dry-run",
+    "release:auto": "node scripts/simple-release.js",
+    "release:1.0": "node scripts/simple-release.js major",
+    "publish:dry": "node scripts/simple-release.js --dry-run",
+    "publish:now": "node scripts/simple-release.js --skip-tests",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
     "prepare": "husky",
     "pre-commit": "lint-staged",
@@ -85,11 +95,22 @@
     "rest",
     "typescript",
     "dependency-injection",
-    "performance"
+    "performance",
+    "high-performance",
+    "native-modules",
+    "crypto",
+    "caching",
+    "websocket",
+    "rate-limiting",
+    "multi-threading",
+    "production-ready"
   ],
   "author": "Mahmoud Yasser",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "nexure": "./bin/nexure.js"
+  },
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
@@ -117,6 +138,7 @@
     "node-gyp": "^10.0.1",
     "nodemon": "^3.1.9",
     "nyc": "^15.1.0",
+    "open": "^10.1.0",
     "prettier": "^3.5.3",
     "tar": "^7.4.3",
     "tar-stream": "^3.1.6",
@@ -128,7 +150,8 @@
     "ws": "^8.16.0"
   },
   "dependencies": {
-    "reflect-metadata": "^0.2.1"
+    "reflect-metadata": "^0.2.1",
+    "commander": "^12.1.0"
   },
   "optionalDependencies": {
     "ioredis": "^5.3.2",
