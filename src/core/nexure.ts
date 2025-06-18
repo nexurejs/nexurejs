@@ -9,6 +9,7 @@ import {
   WebSocketServerOptions
 } from '../native/index.js';
 import { setUseNativeByDefault } from '../utils/native-bindings.js';
+import { v8Optimizer } from '../utils/v8-optimizer.js';
 
 export interface NexureOptions {
   /**
@@ -86,6 +87,47 @@ export interface NexureOptions {
     };
 
     /**
+     * V8 engine optimization options
+     */
+    v8Optimizer?: {
+      /**
+       * Enable V8 engine optimizations
+       * @default true
+       */
+      enabled?: boolean;
+
+      /**
+       * Enable hidden class optimizations for objects
+       * @default true
+       */
+      hiddenClasses?: boolean;
+
+      /**
+       * Enable monomorphic call site optimizations
+       * @default true
+       */
+      monomorphicCalls?: boolean;
+
+      /**
+       * Enable function optimization wrappers
+       * @default true
+       */
+      functionOptimization?: boolean;
+
+      /**
+       * Track garbage collection events
+       * @default false in production, true in development
+       */
+      trackGC?: boolean;
+
+      /**
+       * Enable tracking of optimization statistics
+       * @default false in production, true in development
+       */
+      trackStatistics?: boolean;
+    };
+
+    /**
      * Interval in ms to force garbage collection if available (0 = disabled)
      * @default 0
      */
@@ -139,6 +181,9 @@ export class Nexure {
 
     // Initialize native modules
     this.initializeNativeModules();
+    
+    // Initialize V8 optimizer with configuration options
+    this.initializeV8Optimizer();
 
     this.container = new Container();
     this.router = new Router(this.options.globalPrefix);
@@ -429,6 +474,39 @@ export class Nexure {
 
     // Close WebSocket server if exists
     this.wsServer?.stop();
+    
+    // Reset V8 optimizer
+    v8Optimizer.reset();
+  }
+  
+  /**
+   * Initialize V8 optimizer with configuration options
+   */
+  private initializeV8Optimizer(): void {
+    const v8Options = this.options.performance?.v8Optimizer || {};
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    // Configure V8 optimizer
+    v8Optimizer.configure({
+      enabled: v8Options.enabled !== false,
+      hiddenClassOptimization: v8Options.hiddenClasses !== false,
+      monomorphicCallOptimization: v8Options.monomorphicCalls !== false,
+      functionOptimization: v8Options.functionOptimization !== false,
+      trackGC: v8Options.trackGC ?? !isProduction,
+      trackStats: v8Options.trackStatistics ?? !isProduction
+    });
+    
+    if (this.options.logging) {
+      this.logger.info('V8 optimizer initialized');
+    }
+  }
+  
+  /**
+   * Get V8 optimization statistics
+   * @returns The current V8 optimization statistics
+   */
+  getV8OptimizationStats(): Record<string, any> {
+    return v8Optimizer.getOptimizationStats();
   }
 
   /**
