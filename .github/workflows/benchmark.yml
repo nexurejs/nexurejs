@@ -24,15 +24,9 @@ jobs:
 
     - name: Build
       run: npm run build
-      env:
-        NODE_OPTIONS: --experimental-vm-modules
 
     - name: Run benchmarks
-      run: |
-        # Fix TypeScript execution by using ts-node with proper flags for ESM
-        NODE_OPTIONS="--experimental-vm-modules" npx ts-node-esm -P tsconfig.json benchmarks/benchmarks.ts || \
-        NODE_OPTIONS="--experimental-vm-modules" npx tsx benchmarks/benchmarks.ts || \
-        NODE_OPTIONS="--experimental-vm-modules" node -r ts-node/register benchmarks/benchmarks.ts
+      run: npm run benchmark
 
     - name: Store benchmark results
       uses: actions/upload-artifact@v4
