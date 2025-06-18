@@ -8,8 +8,12 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Writable, PassThrough, Transform, Readable, TransformCallback } from 'node:stream';
 
-// Create a logger instance
-const logger = new Logger();
+// Simple logging helper instead of using Logger to avoid circular dependencies
+const logger = {
+  warn: (message: string, ...args: any[]): void => {
+    console.warn(`[StreamMiddleware] ${message}`, ...args);
+  }
+};
 
 /**
  * Check if request has a body
