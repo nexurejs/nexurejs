@@ -161,6 +161,132 @@ export interface WebSocketConnectionStats {
   roomCount: number;
 }
 
+// Stream Processor interfaces
+export interface StreamProcessorOptions {
+  chunkSize?: number;
+  maxBufferSize?: number;
+  autoFlush?: boolean;
+  flushInterval?: number;
+}
+
+export interface StreamProcessorMetrics {
+  totalBytesProcessed: number;
+  totalChunksProcessed: number;
+  avgProcessingTimeMs: number;
+  maxProcessingTimeMs: number;
+  totalFlushes: number;
+  bufferOverflows: number;
+}
+
+// Compression Engine interfaces
+export interface CompressionEngineOptions {
+  algorithm?: 'gzip' | 'deflate' | 'brotli' | 'lz4';
+  level?: number;
+  chunkSize?: number;
+  dictionary?: Buffer;
+}
+
+export interface CompressionEngineMetrics {
+  totalBytesCompressed: number;
+  totalBytesDecompressed: number;
+  compressionRatio: number;
+  avgCompressionTimeMs: number;
+  avgDecompressionTimeMs: number;
+  totalCompressOperations: number;
+  totalDecompressOperations: number;
+}
+
+// Rate Limiter interfaces
+export interface RateLimiterOptions {
+  tokensPerInterval: number;
+  interval: number; // in milliseconds
+  burstSize?: number;
+  precision?: number;
+}
+
+export interface RateLimiterMetrics {
+  totalRequests: number;
+  allowedRequests: number;
+  throttledRequests: number;
+  currentTokens: number;
+  avgWaitTimeMs: number;
+  maxBurstUsed: number;
+}
+
+// Protocol Buffers interfaces
+export interface ProtocolBuffersOptions {
+  schemaPath?: string;
+  validateOnEncode?: boolean;
+  validateOnDecode?: boolean;
+  cacheSize?: number;
+}
+
+export interface ProtocolBuffersMetrics {
+  totalEncoded: number;
+  totalDecoded: number;
+  encodeErrors: number;
+  decodeErrors: number;
+  avgEncodeTimeMs: number;
+  avgDecodeTimeMs: number;
+  cacheHitRate: number;
+}
+
+// Validation Engine interfaces
+export interface ValidationRule {
+  type: string;
+  field: string;
+  pattern?: string;
+  min?: number;
+  max?: number;
+  required?: boolean;
+  options?: any[];
+}
+
+export interface ValidationEngineOptions {
+  strictMode?: boolean;
+  maxRules?: number;
+  cacheSize?: number;
+  cacheResults?: boolean;
+}
+
+export interface ValidationEngineMetrics {
+  totalValidations: number;
+  passedValidations: number;
+  failedValidations: number;
+  avgValidationTimeMs: number;
+  maxValidationTimeMs: number;
+  cacheHitRate: number;
+}
+
+// Thread Pool interfaces
+export interface ThreadPoolOptions {
+  minThreads?: number;
+  maxThreads?: number;
+  idleTimeout?: number;
+  queueSize?: number;
+  priority?: 'fifo' | 'lifo' | 'priority';
+}
+
+export interface ThreadPoolTask {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  priority?: number;
+  result?: any;
+  error?: string;
+}
+
+export interface ThreadPoolMetrics {
+  activeThreads: number;
+  idleThreads: number;
+  completedTasks: number;
+  failedTasks: number;
+  cancelledTasks: number;
+  pendingTasks: number;
+  avgExecutionTimeMs: number;
+  avgQueueTimeMs: number;
+  maxQueueLength: number;
+}
+
 /**
  * Status of native module components
  */
@@ -183,6 +309,28 @@ export interface NativeModuleStatus {
   webSocket: boolean;
   /** Whether the object pool is available */
   objectPool: boolean;
+  /** Whether the LRU cache is available */
+  lruCache: boolean;
+  /** Whether the middleware chain is available */
+  middlewareChain: boolean;
+  /** Whether the hash functions are available */
+  hashFunctions: boolean;
+  /** Whether the string encoder is available */
+  stringEncoder: boolean;
+  /** Whether the file operations are available */
+  fileOperations: boolean;
+  /** Whether the stream processor is available */
+  streamProcessor: boolean;
+  /** Whether the compression engine is available */
+  compressionEngine: boolean;
+  /** Whether the rate limiter is available */
+  rateLimiter: boolean;
+  /** Whether the protocol buffers are available */
+  protocolBuffers: boolean;
+  /** Whether the validation engine is available */
+  validationEngine: boolean;
+  /** Whether the thread pool is available */
+  threadPool: boolean;
   /** Error message if loading failed */
   error?: string;
 }
@@ -202,7 +350,18 @@ const nativeModuleStatus: NativeModuleStatus = {
   schemaValidator: false,
   compression: false,
   webSocket: false,
-  objectPool: false
+  objectPool: false,
+  lruCache: false,
+  middlewareChain: false,
+  hashFunctions: false,
+  stringEncoder: false,
+  fileOperations: false,
+  streamProcessor: false,
+  compressionEngine: false,
+  rateLimiter: false,
+  protocolBuffers: false,
+  validationEngine: false,
+  threadPool: false
 };
 
 // Default configuration
@@ -239,6 +398,17 @@ export function configureNativeModules(options: NativeModuleOptions): NativeModu
     nativeModuleStatus.compression = false;
     nativeModuleStatus.webSocket = false;
     nativeModuleStatus.objectPool = false;
+    nativeModuleStatus.lruCache = false;
+    nativeModuleStatus.middlewareChain = false;
+    nativeModuleStatus.hashFunctions = false;
+    nativeModuleStatus.stringEncoder = false;
+    nativeModuleStatus.fileOperations = false;
+    nativeModuleStatus.streamProcessor = false;
+    nativeModuleStatus.compressionEngine = false;
+    nativeModuleStatus.rateLimiter = false;
+    nativeModuleStatus.protocolBuffers = false;
+    nativeModuleStatus.validationEngine = false;
+    nativeModuleStatus.threadPool = false;
   }
 
   return nativeOptions;
@@ -249,8 +419,10 @@ export function configureNativeModules(options: NativeModuleOptions): NativeModu
  * @returns Status object
  */
 export function getNativeModuleStatus(): NativeModuleStatus {
-  // Ensure native module is loaded
-  loadNativeBinding();
+  if (!nativeBindingAttempted) {
+    loadNativeBinding();
+  }
+
   return {
     loaded: nativeBinding !== null,
     httpParser: nativeBinding?.HttpParser !== undefined,
@@ -261,6 +433,17 @@ export function getNativeModuleStatus(): NativeModuleStatus {
     compression: nativeBinding?.Compression !== undefined,
     webSocket: nativeBinding?.NativeWebSocketServer !== undefined,
     objectPool: nativeBinding?.ObjectPool !== undefined,
+    lruCache: nativeBinding?.LRUCache !== undefined,
+    middlewareChain: nativeBinding?.MiddlewareChain !== undefined,
+    hashFunctions: nativeBinding?.HashFunctions !== undefined,
+    stringEncoder: nativeBinding?.StringEncoder !== undefined,
+    fileOperations: nativeBinding?.FileOperations !== undefined,
+    streamProcessor: nativeBinding?.StreamProcessor !== undefined,
+    compressionEngine: nativeBinding?.CompressionEngine !== undefined,
+    rateLimiter: nativeBinding?.RateLimiter !== undefined,
+    protocolBuffers: nativeBinding?.ProtocolBuffers !== undefined,
+    validationEngine: nativeBinding?.ValidationEngine !== undefined,
+    threadPool: nativeBinding?.ThreadPool !== undefined,
     error: nativeBindingError === null ? undefined : nativeBindingError
   };
 }
@@ -343,6 +526,7 @@ function initializeNativeModuleStatus(): void {
     nativeModuleStatus.urlParser = Boolean(nativeBinding.parse && nativeBinding.parseQueryString);
     nativeModuleStatus.schemaValidator = Boolean(nativeBinding.validate && nativeBinding.compileSchema);
     nativeModuleStatus.compression = Boolean(nativeBinding.compress && nativeBinding.decompress);
+    nativeModuleStatus.lruCache = Boolean(nativeBinding.LRUCache);
     nativeModuleStatus.webSocket = Boolean(nativeBinding.NativeWebSocketServer);
     nativeModuleStatus.objectPool = Boolean(nativeBinding.ObjectPool);
 
@@ -2124,16 +2308,93 @@ export class WebSocketServer extends EventEmitter {
  * Reset all performance metrics
  */
 export function resetAllPerformanceMetrics(): void {
+  // Reset basic modules
+  HttpParser.resetPerformanceMetrics();
+  RadixRouter.resetPerformanceMetrics();
+  JsonProcessor.resetPerformanceMetrics();
+  UrlParser.resetPerformanceMetrics();
+  SchemaValidator.resetPerformanceMetrics();
+  Compression.resetPerformanceMetrics();
+  WebSocketServer.resetPerformanceMetrics();
+  ObjectPool.resetPerformanceMetrics();
+
+  // Reset metrics for LRUCache
+  try {
+    if (nativeBinding && nativeModuleStatus.lruCache && nativeBinding.LRUCache) {
+      nativeBinding.LRUCache.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  // Reset metrics for MiddlewareChain
+  try {
+    if (nativeBinding && nativeModuleStatus.middlewareChain && nativeBinding.MiddlewareChain) {
+      nativeBinding.MiddlewareChain.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  // Reset metrics for HashFunctions
+  try {
+    if (nativeBinding && nativeModuleStatus.hashFunctions && nativeBinding.HashFunctions) {
+      nativeBinding.HashFunctions.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  // Reset metrics for StringEncoder
+  try {
+    if (nativeBinding && nativeModuleStatus.stringEncoder && nativeBinding.StringEncoder) {
+      nativeBinding.StringEncoder.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  // Reset metrics for FileOperations
+  try {
+    if (nativeBinding && nativeModuleStatus.fileOperations && nativeBinding.FileOperations) {
+      nativeBinding.FileOperations.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  // Reset metrics for new modules
+  try {
+    if (nativeBinding && nativeModuleStatus.streamProcessor && nativeBinding.StreamProcessor) {
+      nativeBinding.StreamProcessor.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  try {
+    if (nativeBinding && nativeModuleStatus.compressionEngine && nativeBinding.CompressionEngine) {
+      nativeBinding.CompressionEngine.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  try {
+    if (nativeBinding && nativeModuleStatus.rateLimiter && nativeBinding.RateLimiter) {
+      nativeBinding.RateLimiter.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  try {
+    if (nativeBinding && nativeModuleStatus.protocolBuffers && nativeBinding.ProtocolBuffers) {
+      nativeBinding.ProtocolBuffers.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  try {
+    if (nativeBinding && nativeModuleStatus.validationEngine && nativeBinding.ValidationEngine) {
+      nativeBinding.ValidationEngine.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
+  try {
+    if (nativeBinding && nativeModuleStatus.threadPool && nativeBinding.ThreadPool) {
+      nativeBinding.ThreadPool.resetMetrics();
+    }
+  } catch (_e) { /* Ignore errors */ }
+
   // Import the resetNativeBindingMetrics function dynamically
   import('../utils/native-bindings.js').then(({ resetNativeBindingMetrics }) => {
-    HttpParser.resetPerformanceMetrics();
-    RadixRouter.resetPerformanceMetrics();
-    JsonProcessor.resetPerformanceMetrics();
-    UrlParser.resetPerformanceMetrics();
-    SchemaValidator.resetPerformanceMetrics();
-    Compression.resetPerformanceMetrics();
-    WebSocketServer.resetPerformanceMetrics();
     resetNativeBindingMetrics();
+  }).catch(() => {
+    // Ignore errors
   });
 }
 
@@ -2148,21 +2409,278 @@ export function getAllPerformanceMetrics(): {
   schemaValidator: ReturnType<typeof SchemaValidator.getPerformanceMetrics>;
   compression: ReturnType<typeof Compression.getPerformanceMetrics>;
   websocket: ReturnType<typeof WebSocketServer.getPerformanceMetrics>;
-  nativeBindings: ReturnType<typeof import('../utils/native-bindings.js').getNativeBindingMetrics>;
+  objectPool: ReturnType<typeof ObjectPool.getPerformanceMetrics>;
+  lruCache: any;
+  middlewareChain: any;
+  hashFunctions: any;
+  stringEncoder: any;
+  fileOperations: any;
+  streamProcessor: StreamProcessorMetrics;
+  compressionEngine: CompressionEngineMetrics;
+  rateLimiter: RateLimiterMetrics;
+  protocolBuffers: ProtocolBuffersMetrics;
+  validationEngine: ValidationEngineMetrics;
+  threadPool: ThreadPoolMetrics;
+  nativeBindings: any;
 } {
-  // Import the getNativeBindingMetrics function
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { getNativeBindingMetrics } = require('../utils/native-bindings');
+  // Get metrics from native module components
+  const httpParserMetrics = HttpParser.getPerformanceMetrics();
+  const radixRouterMetrics = RadixRouter.getPerformanceMetrics();
+  const jsonProcessorMetrics = JsonProcessor.getPerformanceMetrics();
+  const urlParserMetrics = UrlParser.getPerformanceMetrics();
+  const schemaValidatorMetrics = SchemaValidator.getPerformanceMetrics();
+  const compressionMetrics = Compression.getPerformanceMetrics();
+  const websocketMetrics = WebSocketServer.getPerformanceMetrics();
+  const objectPoolMetrics = ObjectPool.getPerformanceMetrics();
+
+  // Initialize default metrics for all modules
+  const defaultLRUCacheMetrics = {
+    hits: 0,
+    misses: 0,
+    evictions: 0,
+    expirations: 0,
+    insertions: 0,
+    updates: 0,
+    hitRatio: 0,
+    size: 0,
+    capacity: 0
+  };
+
+  const defaultMiddlewareMetrics = {
+    totalChainTime: 0,
+    totalChainCalls: 0,
+    totalMiddlewareCalls: 0,
+    abortedCalls: 0,
+    averageChainTime: 0,
+    middlewareCount: 0
+  };
+
+  const defaultHashFunctionsMetrics = {
+    md5Time: 0,
+    md5Count: 0,
+    md5AvgTime: 0,
+    sha1Time: 0,
+    sha1Count: 0,
+    sha1AvgTime: 0,
+    sha256Time: 0,
+    sha256Count: 0,
+    sha256AvgTime: 0,
+    sha512Time: 0,
+    sha512Count: 0,
+    sha512AvgTime: 0,
+    hmacTime: 0,
+    hmacCount: 0,
+    hmacAvgTime: 0
+  };
+
+  const defaultStringEncoderMetrics = {
+    base64EncodeTime: 0,
+    base64EncodeCount: 0,
+    base64EncodeAvgTime: 0,
+    base64DecodeTime: 0,
+    base64DecodeCount: 0,
+    base64DecodeAvgTime: 0,
+    urlEncodeTime: 0,
+    urlEncodeCount: 0,
+    urlEncodeAvgTime: 0,
+    urlDecodeTime: 0,
+    urlDecodeCount: 0,
+    urlDecodeAvgTime: 0,
+    htmlEncodeTime: 0,
+    htmlEncodeCount: 0,
+    htmlEncodeAvgTime: 0,
+    htmlDecodeTime: 0,
+    htmlDecodeCount: 0,
+    htmlDecodeAvgTime: 0
+  };
+
+  const defaultFileOperationsMetrics = {
+    readTime: 0,
+    readCount: 0,
+    readAvgTime: 0,
+    writeTime: 0,
+    writeCount: 0,
+    writeAvgTime: 0,
+    mmapTime: 0,
+    mmapCount: 0,
+    mmapAvgTime: 0,
+    mappedFilesCount: 0,
+    activeMappedFiles: 0,
+    totalMappedBytes: 0
+  };
+
+  const defaultStreamProcessorMetrics: StreamProcessorMetrics = {
+    totalBytesProcessed: 0,
+    totalChunksProcessed: 0,
+    avgProcessingTimeMs: 0,
+    maxProcessingTimeMs: 0,
+    totalFlushes: 0,
+    bufferOverflows: 0
+  };
+
+  const defaultCompressionEngineMetrics: CompressionEngineMetrics = {
+    totalBytesCompressed: 0,
+    totalBytesDecompressed: 0,
+    compressionRatio: 0,
+    avgCompressionTimeMs: 0,
+    avgDecompressionTimeMs: 0,
+    totalCompressOperations: 0,
+    totalDecompressOperations: 0
+  };
+
+  const defaultRateLimiterMetrics: RateLimiterMetrics = {
+    totalRequests: 0,
+    allowedRequests: 0,
+    throttledRequests: 0,
+    currentTokens: 0,
+    avgWaitTimeMs: 0,
+    maxBurstUsed: 0
+  };
+
+  const defaultProtocolBuffersMetrics: ProtocolBuffersMetrics = {
+    totalEncoded: 0,
+    totalDecoded: 0,
+    encodeErrors: 0,
+    decodeErrors: 0,
+    avgEncodeTimeMs: 0,
+    avgDecodeTimeMs: 0,
+    cacheHitRate: 0
+  };
+
+  const defaultValidationEngineMetrics: ValidationEngineMetrics = {
+    totalValidations: 0,
+    passedValidations: 0,
+    failedValidations: 0,
+    avgValidationTimeMs: 0,
+    maxValidationTimeMs: 0,
+    cacheHitRate: 0
+  };
+
+  const defaultThreadPoolMetrics: ThreadPoolMetrics = {
+    activeThreads: 0,
+    idleThreads: 0,
+    completedTasks: 0,
+    failedTasks: 0,
+    cancelledTasks: 0,
+    pendingTasks: 0,
+    avgExecutionTimeMs: 0,
+    avgQueueTimeMs: 0,
+    maxQueueLength: 0
+  };
+
+  let lruCacheMetrics = defaultLRUCacheMetrics;
+  let middlewareMetrics = defaultMiddlewareMetrics;
+  let hashFunctionsMetrics = defaultHashFunctionsMetrics;
+  let stringEncoderMetrics = defaultStringEncoderMetrics;
+  let fileOperationsMetrics = defaultFileOperationsMetrics;
+  let streamProcessorMetrics = defaultStreamProcessorMetrics;
+  let compressionEngineMetrics = defaultCompressionEngineMetrics;
+  let rateLimiterMetrics = defaultRateLimiterMetrics;
+  let protocolBuffersMetrics = defaultProtocolBuffersMetrics;
+  let validationEngineMetrics = defaultValidationEngineMetrics;
+  let threadPoolMetrics = defaultThreadPoolMetrics;
+
+  if (nativeBinding && nativeModuleStatus.loaded) {
+    try {
+      if (nativeModuleStatus.lruCache && nativeBinding.LRUCache) {
+        const instance = new LRUCache();
+        lruCacheMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.middlewareChain && nativeBinding.MiddlewareChain) {
+        const instance = new MiddlewareChain();
+        middlewareMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.hashFunctions && nativeBinding.HashFunctions) {
+        const instance = new HashFunctions();
+        hashFunctionsMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.stringEncoder && nativeBinding.StringEncoder) {
+        const instance = new StringEncoder();
+        stringEncoderMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.fileOperations && nativeBinding.FileOperations) {
+        const instance = new FileOperations();
+        fileOperationsMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    // Get metrics for new modules
+    try {
+      if (nativeModuleStatus.streamProcessor && nativeBinding.StreamProcessor) {
+        const instance = StreamProcessor.getInstance();
+        streamProcessorMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.compressionEngine && nativeBinding.CompressionEngine) {
+        const instance = CompressionEngine.getInstance();
+        compressionEngineMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.rateLimiter && nativeBinding.RateLimiter) {
+        const instance = RateLimiter.getInstance({tokensPerInterval: 100, interval: 1000});
+        rateLimiterMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.protocolBuffers && nativeBinding.ProtocolBuffers) {
+        const instance = ProtocolBuffers.getInstance();
+        protocolBuffersMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.validationEngine && nativeBinding.ValidationEngine) {
+        const instance = ValidationEngine.getInstance();
+        validationEngineMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+
+    try {
+      if (nativeModuleStatus.threadPool && nativeBinding.ThreadPool) {
+        const instance = ThreadPool.getInstance();
+        threadPoolMetrics = instance.getMetrics();
+      }
+    } catch (_e) { /* Use default metrics */ }
+  }
 
   return {
-    httpParser: HttpParser.getPerformanceMetrics(),
-    radixRouter: RadixRouter.getPerformanceMetrics(),
-    jsonProcessor: JsonProcessor.getPerformanceMetrics(),
-    urlParser: UrlParser.getPerformanceMetrics(),
-    schemaValidator: SchemaValidator.getPerformanceMetrics(),
-    compression: Compression.getPerformanceMetrics(),
-    websocket: WebSocketServer.getPerformanceMetrics(),
-    nativeBindings: getNativeBindingMetrics()
+    httpParser: httpParserMetrics,
+    radixRouter: radixRouterMetrics,
+    jsonProcessor: jsonProcessorMetrics,
+    urlParser: urlParserMetrics,
+    schemaValidator: schemaValidatorMetrics,
+    compression: compressionMetrics,
+    websocket: websocketMetrics,
+    objectPool: objectPoolMetrics,
+    lruCache: lruCacheMetrics,
+    middlewareChain: middlewareMetrics,
+    hashFunctions: hashFunctionsMetrics,
+    stringEncoder: stringEncoderMetrics,
+    fileOperations: fileOperationsMetrics,
+    streamProcessor: streamProcessorMetrics,
+    compressionEngine: compressionEngineMetrics,
+    rateLimiter: rateLimiterMetrics,
+    protocolBuffers: protocolBuffersMetrics,
+    validationEngine: validationEngineMetrics,
+    threadPool: threadPoolMetrics,
+    nativeBindings: import('../utils/native-bindings.js').then(module => module.getNativeBindingMetrics()).catch(() => ({}))
   };
 }
 
@@ -2172,23 +2690,14 @@ export function getAllPerformanceMetrics(): {
  */
 export function getNativeModuleMetrics(): {
   status: NativeModuleStatus;
-  performance: {
-    httpParser: ReturnType<typeof HttpParser.getPerformanceMetrics>;
-    radixRouter: ReturnType<typeof RadixRouter.getPerformanceMetrics>;
-    jsonProcessor: ReturnType<typeof JsonProcessor.getPerformanceMetrics>;
-    urlParser: ReturnType<typeof UrlParser.getPerformanceMetrics>;
-    schemaValidator: ReturnType<typeof SchemaValidator.getPerformanceMetrics>;
-    compression: ReturnType<typeof Compression.getPerformanceMetrics>;
-    websocket: ReturnType<typeof WebSocketServer.getPerformanceMetrics>;
-  };
-  nativeBindings: ReturnType<typeof import('../utils/native-bindings.js').getNativeBindingMetrics>;
+  performance: NativeModulePerformanceMetrics;
 } {
+  // Get all metrics using the existing function
+  const metrics = getAllPerformanceMetrics();
+
   return {
     status: getNativeModuleStatus(),
-    performance: getAllPerformanceMetrics(),
-    nativeBindings: import('../utils/native-bindings.js')
-      .then(m => m.getNativeBindingMetrics())
-      .catch(() => ({ loadAttempts: 0, loadSuccesses: 0, loadTime: 0 })) as any
+    performance: metrics
   };
 }
 
@@ -2367,5 +2876,302 @@ export class ObjectPool implements NativeObjectPool {
     ObjectPool.objectReuseCount = 0;
     ObjectPool.bufferCreationCount = 0;
     ObjectPool.bufferReuseCount = 0;
+  }
+}
+
+// Return metrics for all the native modules
+export interface NativeModulePerformanceMetrics {
+  httpParser: ReturnType<typeof HttpParser.getPerformanceMetrics>;
+  radixRouter: ReturnType<typeof RadixRouter.getPerformanceMetrics>;
+  jsonProcessor: ReturnType<typeof JsonProcessor.getPerformanceMetrics>;
+  urlParser: ReturnType<typeof UrlParser.getPerformanceMetrics>;
+  schemaValidator: ReturnType<typeof SchemaValidator.getPerformanceMetrics>;
+  compression: ReturnType<typeof Compression.getPerformanceMetrics>;
+  websocket: ReturnType<typeof WebSocketServer.getPerformanceMetrics>;
+  objectPool: ReturnType<typeof ObjectPool.getPerformanceMetrics>;
+  lruCache: any; // LRUCacheMetrics
+  middlewareChain: any; // MiddlewareMetrics
+  hashFunctions: any; // HashFunctionsMetrics
+  stringEncoder: any; // StringEncoderMetrics
+  fileOperations: any; // FileOperationsMetrics
+  streamProcessor: StreamProcessorMetrics;
+  compressionEngine: CompressionEngineMetrics;
+  rateLimiter: RateLimiterMetrics;
+  protocolBuffers: ProtocolBuffersMetrics;
+  validationEngine: ValidationEngineMetrics;
+  threadPool: ThreadPoolMetrics;
+  nativeBindings: any; // ReturnType<typeof import('../utils/native-bindings.js').getNativeBindingMetrics>;
+}
+
+// Stub classes for native modules until they are fully implemented
+class LRUCache {
+  getMetrics() {
+    return {
+      hits: 0,
+      misses: 0,
+      evictions: 0,
+      expirations: 0,
+      insertions: 0,
+      updates: 0,
+      hitRatio: 0,
+      size: 0,
+      capacity: 0
+    };
+  }
+}
+
+class MiddlewareChain {
+  getMetrics() {
+    return {
+      totalChainTime: 0,
+      totalChainCalls: 0,
+      totalMiddlewareCalls: 0,
+      abortedCalls: 0,
+      averageChainTime: 0,
+      middlewareCount: 0
+    };
+  }
+}
+
+class HashFunctions {
+  getMetrics() {
+    return {
+      md5Time: 0,
+      md5Count: 0,
+      md5AvgTime: 0,
+      sha1Time: 0,
+      sha1Count: 0,
+      sha1AvgTime: 0,
+      sha256Time: 0,
+      sha256Count: 0,
+      sha256AvgTime: 0,
+      sha512Time: 0,
+      sha512Count: 0,
+      sha512AvgTime: 0,
+      hmacTime: 0,
+      hmacCount: 0,
+      hmacAvgTime: 0
+    };
+  }
+}
+
+class StringEncoder {
+  getMetrics() {
+    return {
+      base64EncodeTime: 0,
+      base64EncodeCount: 0,
+      base64EncodeAvgTime: 0,
+      base64DecodeTime: 0,
+      base64DecodeCount: 0,
+      base64DecodeAvgTime: 0,
+      urlEncodeTime: 0,
+      urlEncodeCount: 0,
+      urlEncodeAvgTime: 0,
+      urlDecodeTime: 0,
+      urlDecodeCount: 0,
+      urlDecodeAvgTime: 0,
+      htmlEncodeTime: 0,
+      htmlEncodeCount: 0,
+      htmlEncodeAvgTime: 0,
+      htmlDecodeTime: 0,
+      htmlDecodeCount: 0,
+      htmlDecodeAvgTime: 0
+    };
+  }
+}
+
+class FileOperations {
+  getMetrics() {
+    return {
+      readTime: 0,
+      readCount: 0,
+      readAvgTime: 0,
+      writeTime: 0,
+      writeCount: 0,
+      writeAvgTime: 0,
+      mmapTime: 0,
+      mmapCount: 0,
+      mmapAvgTime: 0,
+      mappedFilesCount: 0,
+      activeMappedFiles: 0,
+      totalMappedBytes: 0
+    };
+  }
+}
+
+class StreamProcessor {
+  private static instance: StreamProcessor;
+
+  static getInstance(): StreamProcessor {
+    if (!StreamProcessor.instance) {
+      StreamProcessor.instance = new StreamProcessor();
+    }
+    return StreamProcessor.instance;
+  }
+
+  getMetrics(): StreamProcessorMetrics {
+    return {
+      totalBytesProcessed: 0,
+      totalChunksProcessed: 0,
+      avgProcessingTimeMs: 0,
+      maxProcessingTimeMs: 0,
+      totalFlushes: 0,
+      bufferOverflows: 0
+    };
+  }
+}
+
+class CompressionEngine {
+  private static instance: CompressionEngine;
+
+  static getInstance(): CompressionEngine {
+    if (!CompressionEngine.instance) {
+      CompressionEngine.instance = new CompressionEngine();
+    }
+    return CompressionEngine.instance;
+  }
+
+  getMetrics(): CompressionEngineMetrics {
+    return {
+      totalBytesCompressed: 0,
+      totalBytesDecompressed: 0,
+      compressionRatio: 0,
+      avgCompressionTimeMs: 0,
+      avgDecompressionTimeMs: 0,
+      totalCompressOperations: 0,
+      totalDecompressOperations: 0
+    };
+  }
+}
+
+class RateLimiter {
+  private static instance: RateLimiter;
+
+  static getInstance(options: RateLimiterOptions): RateLimiter {
+    if (!RateLimiter.instance) {
+      RateLimiter.instance = new RateLimiter();
+    }
+    return RateLimiter.instance;
+  }
+
+  getMetrics(): RateLimiterMetrics {
+    return {
+      totalRequests: 0,
+      allowedRequests: 0,
+      throttledRequests: 0,
+      currentTokens: 0,
+      avgWaitTimeMs: 0,
+      maxBurstUsed: 0
+    };
+  }
+}
+
+class ProtocolBuffers {
+  private static instance: ProtocolBuffers;
+
+  static getInstance(): ProtocolBuffers {
+    if (!ProtocolBuffers.instance) {
+      ProtocolBuffers.instance = new ProtocolBuffers();
+    }
+    return ProtocolBuffers.instance;
+  }
+
+  getMetrics(): ProtocolBuffersMetrics {
+    return {
+      totalEncoded: 0,
+      totalDecoded: 0,
+      encodeErrors: 0,
+      decodeErrors: 0,
+      avgEncodeTimeMs: 0,
+      avgDecodeTimeMs: 0,
+      cacheHitRate: 0
+    };
+  }
+}
+
+class ValidationEngine {
+  private static instance: ValidationEngine;
+
+  static getInstance(): ValidationEngine {
+    if (!ValidationEngine.instance) {
+      ValidationEngine.instance = new ValidationEngine();
+    }
+    return ValidationEngine.instance;
+  }
+
+  getMetrics(): ValidationEngineMetrics {
+    return {
+      totalValidations: 0,
+      passedValidations: 0,
+      failedValidations: 0,
+      avgValidationTimeMs: 0,
+      maxValidationTimeMs: 0,
+      cacheHitRate: 0
+    };
+  }
+}
+
+class ThreadPool {
+  private static instance: ThreadPool;
+
+  static getInstance(): ThreadPool {
+    if (!ThreadPool.instance) {
+      ThreadPool.instance = new ThreadPool();
+    }
+    return ThreadPool.instance;
+  }
+
+  getMetrics(): ThreadPoolMetrics {
+    return {
+      activeThreads: 0,
+      idleThreads: 0,
+      completedTasks: 0,
+      failedTasks: 0,
+      cancelledTasks: 0,
+      pendingTasks: 0,
+      avgExecutionTimeMs: 0,
+      avgQueueTimeMs: 0,
+      maxQueueLength: 0
+    };
+  }
+}
+
+// Simple logger implementation if not already defined
+class Logger {
+  info(message: string, ...args: any[]): void {
+    console.log(`[INFO] ${message}`, ...args);
+  }
+
+  warn(message: string, ...args: any[]): void {
+    console.warn(`[WARN] ${message}`, ...args);
+  }
+
+  error(message: string, ...args: any[]): void {
+    console.error(`[ERROR] ${message}`, ...args);
+  }
+
+  debug(message: string, ...args: any[]): void {
+    if (nativeOptions.verbose) {
+      console.debug(`[DEBUG] ${message}`, ...args);
+    }
+  }
+
+  // Add static methods for use with Logger.warn
+  static info(message: string, ...args: any[]): void {
+    console.log(`[INFO] ${message}`, ...args);
+  }
+
+  static warn(message: string, ...args: any[]): void {
+    console.warn(`[WARN] ${message}`, ...args);
+  }
+
+  static error(message: string, ...args: any[]): void {
+    console.error(`[ERROR] ${message}`, ...args);
+  }
+
+  static debug(message: string, ...args: any[]): void {
+    if (nativeOptions.verbose) {
+      console.debug(`[DEBUG] ${message}`, ...args);
+    }
   }
 }

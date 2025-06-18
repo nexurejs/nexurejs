@@ -1,5 +1,17 @@
 #include <napi.h>
+#include "encoding/string_encoder.h"
+#include "thread/thread_pool.h"
+#include "validation/validation_engine.h"
+
+// Include all components except simdjson (causing issues)
+#define INCLUDE_SIMDJSON 1
+#define INCLUDE_OTHER_COMPONENTS 1
+
+#if INCLUDE_SIMDJSON
 #include "json/simdjson_wrapper.h"
+#endif
+
+#if INCLUDE_OTHER_COMPONENTS
 #include "http/http_parser.h"
 #include "http/object_pool.h"
 #include "json/json_processor.h"
@@ -7,7 +19,17 @@
 #include "url/url_parser.h"
 #include "schema/schema_validator.h"
 #include "compression/compression.h"
-#include "websocket/websocket.h"
+#include "websocket/websocket.h" // Re-enabling WebSocket
+#include "cache/lru_cache.h"
+#include "middleware/middleware_chain.h"
+#include "crypto/hash_functions.h"
+#include "file/file_operations.h"
+#include "stream/stream_processor.h"
+#include "compression/compression_engine.h"
+#include "rate/rate_limiter.h"
+#include "protobuf/protocol_buffers.h"
+#endif
+
 #include <mutex>
 #include <vector>
 #include <algorithm>
@@ -76,50 +98,221 @@ void RegisterComponent(const std::string& name, std::function<void()> cleanup) {
 }
 
 /**
- * Initialize the NexureJS native module
- * This file serves as the entry point for the native module
- * It initializes all the native components and exports them
+ * Initialize the NexureJS native module in stages
+ * to identify where segmentation faults might occur
  */
-Napi::Object Init(Napi::Env env, Napi::Object exports) {
-  // Initialize simdjson
-  simdjson::builtin_implementation();
+Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
+  // Initialize only the core components that worked in our minimal module
 
-  // Initialize all components
-  HttpParser::Init(env, exports);
-  ObjectPool::Init(env, exports);
-  RadixRouter::Init(env, exports);
-  JsonProcessor::Init(env, exports);
-  UrlParser::Init(env, exports);
-  SchemaValidator::Init(env, exports);
-  Compression::Init(env, exports);
-  InitWebSocket(env, exports);
+  exports.Set("initializationPhase", Napi::Number::New(env, 1));
 
-  // Register component cleanup functions
-  RegisterComponent("HttpParser", []() { /* Cleanup code if needed */ });
-  RegisterComponent("ObjectPool", []() { /* Cleanup code if needed */ });
-  RegisterComponent("RadixRouter", []() { /* Cleanup code if needed */ });
-  RegisterComponent("JsonProcessor", []() { /* Cleanup code if needed */ });
-  RegisterComponent("UrlParser", []() { /* Cleanup code if needed */ });
-  RegisterComponent("SchemaValidator", []() {
-    // We'll handle this specially to avoid double free
-    static std::once_flag cleanupFlag;
-    std::call_once(cleanupFlag, []() {
-      try {
-        SchemaValidator::Cleanup();
-      } catch (...) {
-        // Ignore errors in cleanup
-      }
-    });
-  });
-  RegisterComponent("Compression", []() { /* Cleanup code if needed */ });
-  RegisterComponent("WebSocket", []() { /* Cleanup code for WebSocket */ });
+  // Step 1: Initialize StringEncoder
+  try {
+    StringEncoder::Init(env, exports);
+    exports.Set("stringEncoderInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("stringEncoderInitialized", Napi::Boolean::New(env, false));
+    exports.Set("stringEncoderError", Napi::String::New(env, "Exception during StringEncoder initialization"));
+  }
 
-  // Export version information
-  exports.Set("version", Napi::String::New(env, "0.1.9"));
+  exports.Set("initializationPhase", Napi::Number::New(env, 2));
+
+  // Step 2: Initialize ThreadPool
+  try {
+    ThreadPool::Init(env, exports);
+    exports.Set("threadPoolInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("threadPoolInitialized", Napi::Boolean::New(env, false));
+    exports.Set("threadPoolError", Napi::String::New(env, "Exception during ThreadPool initialization"));
+  }
+
+  exports.Set("initializationPhase", Napi::Number::New(env, 3));
+
+  // Step 3: Initialize ValidationEngine
+  try {
+    ValidationEngine::Init(env, exports);
+    exports.Set("validationEngineInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("validationEngineInitialized", Napi::Boolean::New(env, false));
+    exports.Set("validationEngineError", Napi::String::New(env, "Exception during ValidationEngine initialization"));
+  }
+
+#if INCLUDE_OTHER_COMPONENTS
+  exports.Set("initializationPhase", Napi::Number::New(env, 5));
+
+  // Step 5: Initialize other components
+  try {
+    HttpParser::Init(env, exports);
+    exports.Set("httpParserInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("httpParserInitialized", Napi::Boolean::New(env, false));
+  }
+
+  try {
+    JsonProcessor::Init(env, exports);
+    exports.Set("jsonProcessorInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("jsonProcessorInitialized", Napi::Boolean::New(env, false));
+  }
+
+  try {
+    RadixRouter::Init(env, exports);
+    exports.Set("radixRouterInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("radixRouterInitialized", Napi::Boolean::New(env, false));
+  }
+
+  try {
+    UrlParser::Init(env, exports);
+    exports.Set("urlParserInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("urlParserInitialized", Napi::Boolean::New(env, false));
+  }
+
+  try {
+    ObjectPool::Init(env, exports);
+    exports.Set("objectPoolInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("objectPoolInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // Enable LRUCache and Compression
+  try {
+    LRUCache::Init(env, exports);
+    exports.Set("lruCacheInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("lruCacheInitialized", Napi::Boolean::New(env, false));
+  }
+
+  try {
+    Compression::Init(env, exports);
+    exports.Set("compressionInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("compressionInitialized", Napi::Boolean::New(env, false));
+  }
+
+      // Enable modules one by one to identify the problematic ones
+
+  // CompressionEngine - Works!
+  try {
+    CompressionEngine::Init(env, exports);
+    exports.Set("compressionEngineInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("compressionEngineInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // SchemaValidator - testing individually
+  try {
+    SchemaValidator::Init(env, exports);
+    exports.Set("schemaValidatorInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("schemaValidatorInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // StreamProcessor - testing individually
+  try {
+    StreamProcessor::Init(env, exports);
+    exports.Set("streamProcessorInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("streamProcessorInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // ProtocolBuffers - testing individually
+  try {
+    ProtocolBuffers::Init(env, exports);
+    exports.Set("protocolBuffersInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("protocolBuffersInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // WebSocket - Works with libuv headers!
+  try {
+    InitWebSocket(env, exports);
+    exports.Set("webSocketInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("webSocketInitialized", Napi::Boolean::New(env, false));
+  }
+
+#if INCLUDE_SIMDJSON
+  // SIMDJSON - testing for the first time
+  try {
+    simdjson::builtin_implementation();
+    exports.Set("simdjsonInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("simdjsonInitialized", Napi::Boolean::New(env, false));
+  }
+#endif
+
+  // HashFunctions - testing fixed version
+  try {
+    nexurejs::HashFunctions::Init(env, exports);
+    exports.Set("hashFunctionsInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("hashFunctionsInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // MiddlewareChain - testing fixed version ✅
+  try {
+    nexurejs::MiddlewareChain::Init(env, exports);
+    exports.Set("middlewareChainInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("middlewareChainInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // FileOperations - testing fixed version ✅
+  try {
+    nexurejs::FileOperations::Init(env, exports);
+    exports.Set("fileOperationsInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("fileOperationsInitialized", Napi::Boolean::New(env, false));
+  }
+
+  // RateLimiter - testing fixed version ✅
+  try {
+    nexurejs::RateLimiter::Init(env, exports);
+    exports.Set("rateLimiterInitialized", Napi::Boolean::New(env, true));
+  } catch (...) {
+    exports.Set("rateLimiterInitialized", Napi::Boolean::New(env, false));
+  }
+#endif
+
+  exports.Set("initializationPhase", Napi::Number::New(env, 10));
+
+  // Add version information and build metadata
+  exports.Set("version", Napi::String::New(env, "0.2.0"));
   exports.Set("isNative", Napi::Boolean::New(env, true));
+  exports.Set("buildDate", Napi::String::New(env, __DATE__ " " __TIME__));
+  exports.Set("platform", Napi::String::New(env,
+#if defined(_WIN32)
+    "windows"
+#elif defined(__APPLE__)
+    "macos"
+#elif defined(__linux__)
+    "linux"
+#else
+    "unknown"
+#endif
+  ));
+
+  // Add functions for performance diagnostics
+  exports.Set("getNativeMemoryUsage", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Object result = Napi::Object::New(env);
+
+    // This is a placeholder - in a real implementation you would use
+    // platform-specific APIs to get actual memory usage
+    result.Set("rss", Napi::Number::New(env, 0));
+    result.Set("heapTotal", Napi::Number::New(env, 0));
+    result.Set("heapUsed", Napi::Number::New(env, 0));
+    result.Set("external", Napi::Number::New(env, 0));
+
+    return result;
+  }));
 
   // Export isAvailable function
   exports.Set("isAvailable", Napi::Function::New(env, IsAvailable));
+
+  exports.Set("initializationComplete", Napi::Boolean::New(env, true));
 
   return exports;
 }
@@ -171,18 +364,24 @@ void Cleanup(void* arg) {
 
 } // namespace nexurejs
 
-// Register the module with Node.js
-napi_value init(napi_env env, napi_value exports) {
-  Napi::Env napi_env(env);
-  Napi::Object napi_exports = Napi::Object(napi_env, exports);
+// Create a C-style wrapper function that can be used with NAPI_MODULE
+napi_value Initialize(napi_env env, napi_value exports) {
+  try {
+    // Convert the C types to their C++ equivalents
+    Napi::Env napi_env(env);
+    Napi::Object napi_exports(napi_env, exports);
 
-  // Register cleanup handler only once
-  if (!nexurejs::isCleanupRegistered) {
-    napi_add_env_cleanup_hook(env, nexurejs::Cleanup, nullptr);
-    nexurejs::isCleanupRegistered = true;
+    // Call our C++ Init function
+    napi_exports = nexurejs::InitAll(napi_env, napi_exports);
+
+    // Return the exports object
+    return exports;
+  } catch (...) {
+    // If we reach here, something went very wrong
+    // Can't use Napi::Error since the env might not be valid anymore
+    return exports;
   }
-
-  return nexurejs::Init(napi_env, napi_exports);
 }
 
-NAPI_MODULE(NODE_GYP_MODULE_NAME, init)
+// Register the module with Node.js
+NAPI_MODULE(NODE_GYP_MODULE_NAME, Initialize)

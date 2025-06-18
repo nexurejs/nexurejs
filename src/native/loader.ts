@@ -5,10 +5,11 @@
  * to JavaScript implementations when native modules are not available.
  */
 
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 // Simple logging implementation instead of using Logger to avoid circular dependencies
 const log = {
@@ -195,7 +196,16 @@ export function loadNativeBinding(modulePath?: string): NativeBindingModule | nu
   }
 
   // Get the absolute path of the current file's directory
-  const currentDir = __dirname || process.cwd();
+  // Handle both ESM and CJS environments
+  let currentDir: string;
+  try {
+    // ESM environment
+    const __filename = fileURLToPath(import.meta.url);
+    currentDir = dirname(__filename);
+  } catch {
+    // CJS environment fallback
+    currentDir = process.cwd();
+  }
   const rootDir = join(currentDir, '..', '..');
 
   const paths = [
