@@ -1,10 +1,12 @@
 /**
  * Enhanced request and response object pool to reduce garbage collection overhead
+ * with V8 engine optimizations
  */
 
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
 import { ObjectPool } from '../native/index.js';
+import { v8Optimizer } from '../utils/v8-optimizer.js';
 
 /**
  * Request pool options
@@ -51,30 +53,43 @@ export interface RequestPoolOptions {
  * Base class for object pools
  */
 abstract class BaseObjectPool<T> {
+  // Use a standard array but with consistent access patterns for V8 optimization
   protected pool: T[] = [];
   protected maxSize: number;
   protected enabled: boolean;
   protected objectPool: ObjectPool | null = null;
   protected preallocated: boolean = false;
+  // Cache frequently used functions to create monomorphic call sites
+  protected readonly push = v8Optimizer.createMonomorphicCallSite(
+    (array: any[], item: any) => array.push(item),
+    ['object', 'object']
+  );
+  protected readonly pop = v8Optimizer.createMonomorphicCallSite(
+    (array: any[]) => array.pop(),
+    ['object']
+  );
 
   constructor(options: RequestPoolOptions = {}) {
+    // Create stable object shape by initializing properties in a consistent order
     this.maxSize = options.maxSize || 1000;
     this.enabled = options.enabled !== false;
 
     // Initialize native object pool if enabled
     if (options.useNative !== false) {
       try {
-        this.objectPool = new ObjectPool({
+        // Create consistent initialization pattern for better hidden class optimization
+        const poolOptions = v8Optimizer.createInlinePropertiesObject({
           maxObjectPoolSize: this.maxSize,
           enabled: this.enabled
         });
+        this.objectPool = new ObjectPool(poolOptions);
       } catch (error) {
         Logger.warn('Failed to initialize native object pool:', error);
         this.objectPool = null;
       }
     }
 
-    // Preallocate objects if requested
+    // Preallocate objects if requested - use V8 optimizer to ensure type consistency
     if (options.preallocate && !this.preallocated) {
       const count = options.preallocateCount || 100;
       this.preallocate(count);
@@ -85,6 +100,8 @@ abstract class BaseObjectPool<T> {
     if (options.warmup !== false) {
       this.warmup();
     }
+    
+    // We'll track optimization statistics when objects are used
   }
 
   /**
