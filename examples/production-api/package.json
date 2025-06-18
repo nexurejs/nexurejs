@@ -1,0 +1,17 @@
+{
+  "name": "nexurejs-production-api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Production-ready API server using NexureJS native modules",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "nexurejs": "file:../.."
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
