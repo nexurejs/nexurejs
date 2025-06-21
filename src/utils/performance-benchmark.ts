@@ -8,6 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { performance, PerformanceObserver } from 'node:perf_hooks';
+import { cpus } from 'os';
 
 /**
  * Benchmark options
@@ -34,51 +35,34 @@ export interface BenchmarkOptions {
 }
 
 /**
- * Benchmark result structure
+ * Enhanced performance monitoring for native optimizations
  */
 export interface BenchmarkResult {
-  /** Name of the benchmark */
   name: string;
-  /** Description of what was benchmarked */
-  description?: string;
-  /** Number of iterations that were run */
-  iterations: number;
-  /** Total time in milliseconds */
-  totalTime: number;
-  /** Average time per iteration in milliseconds */
+  operationsPerSecond: number;
   averageTime: number;
-  /** Operations per second */
-  opsPerSecond: number;
-  /** Standard deviation of iteration times */
-  stdDev: number;
-  /** Margin of error (95% confidence) */
-  marginOfError: number;
-  /** Percentile results (50th, 90th, 95th, 99th) */
-  percentiles: {
-    p50: number;
-    p90: number;
-    p95: number;
-    p99: number;
-  };
-  /** Memory usage statistics (if collected) */
-  memoryStats?: {
-    before: NodeJS.MemoryUsage;
-    after: NodeJS.MemoryUsage;
-    diff: {
-      rss: number;
-      heapTotal: number;
-      heapUsed: number;
-      external: number;
-      arrayBuffers?: number;
-    };
-  };
-  /** CPU usage statistics (if collected) */
-  cpuStats?: {
-    user: number;
-    system: number;
-  };
-  /** When the benchmark was run */
-  timestamp: string;
+  minTime: number;
+  maxTime: number;
+  totalTime: number;
+  iterations: number;
+  memoryUsed: number;
+  usedSIMD: boolean;
+  cpuUtilization: number;
+  throughputMBps?: number;
+}
+
+export interface SIMDBenchmarkResult extends BenchmarkResult {
+  simdSpeedup: number;
+  vectorizationEfficiency: number;
+  cacheHitRate: number;
+}
+
+export interface NativeModuleBenchmarks {
+  simdOptimizer: SIMDBenchmarkResult[];
+  jsonProcessor: BenchmarkResult[];
+  compressionEngine: BenchmarkResult[];
+  httpParser: BenchmarkResult[];
+  memoryManager: BenchmarkResult[];
 }
 
 /**
@@ -253,25 +237,18 @@ export class Benchmark {
       };
     }
 
-    // Create result object
+    // Create result object using the updated interface
     const result: BenchmarkResult = {
       name: this.name,
-      description: this.description,
-      iterations: actualIterations,
-      totalTime,
+      operationsPerSecond: opsPerSecond,
       averageTime: avgTime,
-      opsPerSecond,
-      stdDev,
-      marginOfError,
-      percentiles: {
-        p50,
-        p90,
-        p95,
-        p99
-      },
-      memoryStats,
-      cpuStats,
-      timestamp: new Date().toISOString()
+      minTime: Math.min(...times),
+      maxTime: Math.max(...times),
+      totalTime,
+      iterations: actualIterations,
+      memoryUsed: memoryStats ? memoryStats.diff.heapUsed : 0,
+      usedSIMD: false, // Default value
+      cpuUtilization: cpuStats ? cpuStats.user + cpuStats.system : 0
     };
 
     console.log(`Completed benchmark: ${this.name}`);
@@ -378,7 +355,7 @@ export class BenchmarkSuite {
     }
 
     const timeRatio = result2.averageTime / result1.averageTime;
-    const opsRatio = result1.opsPerSecond / result2.opsPerSecond;
+    const opsRatio = result1.operationsPerSecond / result2.operationsPerSecond;
 
     let output = `Comparison: ${benchmark1Name} vs ${benchmark2Name}\n`;
     output += `  Time ratio: ${timeRatio.toFixed(2)}x`;
@@ -386,8 +363,8 @@ export class BenchmarkSuite {
     output += `  Ops/sec ratio: ${opsRatio.toFixed(2)}x`;
     output += ` (${result1.name} performs ${opsRatio > 1 ? 'more' : 'fewer'} operations per second)\n`;
 
-    if (result1.memoryStats && result2.memoryStats) {
-      const heapRatio = result2.memoryStats.diff.heapUsed / result1.memoryStats.diff.heapUsed;
+    if (result1.memoryUsed && result2.memoryUsed) {
+      const heapRatio = result2.memoryUsed / result1.memoryUsed;
       output += `  Memory usage ratio: ${heapRatio.toFixed(2)}x`;
       output += ` (${result1.name} uses ${heapRatio > 1 ? 'less' : 'more'} memory)\n`;
     }
@@ -485,3 +462,669 @@ const v8Optimizer = {
     return fn;
   }
 };
+
+export class PerformanceBenchmark {
+  private results: Map<string, BenchmarkResult[]> = new Map();
+  private nativeModules: any = {};
+
+  constructor() {
+    this.loadNativeModules();
+  }
+
+  private loadNativeModules() {
+    try {
+      // Load native modules with error handling
+      this.nativeModules.simdOptimizer = require('../native').SIMDOptimizer;
+      this.nativeModules.jsonProcessor = require('../native').JsonProcessor;
+      this.nativeModules.compressionEngine = require('../native').CompressionEngine;
+      this.nativeModules.httpParser = require('../native').HTTPParser;
+      this.nativeModules.memoryManager = require('../native').MemoryManager;
+    } catch (error) {
+      console.warn('Some native modules could not be loaded:', error.message);
+    }
+  }
+
+  // Comprehensive SIMD benchmarks
+  async benchmarkSIMDOptimizer(): Promise<SIMDBenchmarkResult[]> {
+    const results: SIMDBenchmarkResult[] = [];
+
+    if (!this.nativeModules.simdOptimizer) {
+      console.warn('SIMD Optimizer not available');
+      return results;
+    }
+
+    const simdOpt = new this.nativeModules.simdOptimizer();
+
+    // Test different array sizes and types
+    const testSizes = [1000, 10000, 100000, 1000000];
+    const operations = [
+      'arraySumFloat32',
+      'arraySumFloat64',
+      'arraySumInt32',
+      'arrayMultiply',
+      'arrayMultiplyFloat64',
+      'arrayDotProduct',
+      'arrayConvolve',
+      'fastMemcpy',
+      'fastMemset',
+      'stringSearch'
+    ];
+
+    for (const operation of operations) {
+      for (const size of testSizes) {
+        const testData = this.generateTestData(operation, size);
+
+        // Benchmark with SIMD
+        const simdResult = await this.benchmarkFunction(
+          `${operation}_SIMD_${size}`,
+          () => this.callSIMDOperation(simdOpt, operation, testData),
+          { iterations: operation.includes('Mem') ? 100 : 1000 }
+        );
+
+        // Benchmark scalar version (if available)
+        const scalarResult = await this.benchmarkScalarVersion(operation, testData);
+
+        const simdBenchmark: SIMDBenchmarkResult = {
+          ...simdResult,
+          simdSpeedup: scalarResult ? scalarResult.averageTime / simdResult.averageTime : 1,
+          vectorizationEfficiency: this.calculateVectorizationEfficiency(simdResult),
+          cacheHitRate: this.estimateCacheHitRate(size)
+        };
+
+        results.push(simdBenchmark);
+      }
+    }
+
+    return results;
+  }
+
+  // Benchmark JSON processing with SIMD optimizations
+  async benchmarkJSONProcessor(): Promise<BenchmarkResult[]> {
+    const results: BenchmarkResult[] = [];
+
+    if (!this.nativeModules.jsonProcessor) {
+      console.warn('JSON Processor not available');
+      return results;
+    }
+
+    const jsonProcessor = new this.nativeModules.jsonProcessor();
+
+    // Test different JSON scenarios
+    const testCases = [
+      { name: 'small_object', data: this.generateSmallJSON() },
+      { name: 'large_object', data: this.generateLargeJSON() },
+      { name: 'array_numbers', data: this.generateNumberArray(10000) },
+      { name: 'nested_objects', data: this.generateNestedJSON(5, 100) },
+      { name: 'mixed_content', data: this.generateMixedJSON() }
+    ];
+
+    for (const testCase of testCases) {
+      // Parse benchmark
+      const parseResult = await this.benchmarkFunction(
+        `json_parse_${testCase.name}`,
+        () => jsonProcessor.parse(testCase.data),
+        { iterations: 1000 }
+      );
+
+      // Stringify benchmark
+      const parsedData = JSON.parse(testCase.data);
+      const stringifyResult = await this.benchmarkFunction(
+        `json_stringify_${testCase.name}`,
+        () => jsonProcessor.stringify(parsedData),
+        { iterations: 1000 }
+      );
+
+      results.push(parseResult, stringifyResult);
+    }
+
+    return results;
+  }
+
+  // Benchmark compression engine with SIMD optimizations
+  async benchmarkCompressionEngine(): Promise<BenchmarkResult[]> {
+    const results: BenchmarkResult[] = [];
+
+    if (!this.nativeModules.compressionEngine) {
+      console.warn('Compression Engine not available');
+      return results;
+    }
+
+    const compressionEngine = new this.nativeModules.compressionEngine();
+
+    // Test different data types and sizes
+    const testData = [
+      { name: 'text_repetitive', data: this.generateRepetitiveText(50000) },
+      { name: 'text_random', data: this.generateRandomText(50000) },
+      { name: 'binary_structured', data: this.generateStructuredBinary(50000) },
+      { name: 'binary_random', data: this.generateRandomBinary(50000) },
+      { name: 'json_large', data: Buffer.from(this.generateLargeJSON()) }
+    ];
+
+    const algorithms = ['LZ77', 'RLE', 'Delta'];
+
+    for (const test of testData) {
+      for (const algorithm of algorithms) {
+        // Compression benchmark
+        const compressResult = await this.benchmarkFunction(
+          `compress_${algorithm}_${test.name}`,
+          () => compressionEngine[`compress${algorithm}`](test.data),
+          { iterations: 100 }
+        );
+
+        compressResult.throughputMBps = (test.data.length / (1024 * 1024)) / (compressResult.averageTime / 1000);
+        results.push(compressResult);
+      }
+    }
+
+    return results;
+  }
+
+  // Benchmark HTTP parser with SIMD optimizations
+  async benchmarkHTTPParser(): Promise<BenchmarkResult[]> {
+    const results: BenchmarkResult[] = [];
+
+    if (!this.nativeModules.httpParser) {
+      console.warn('HTTP Parser not available');
+      return results;
+    }
+
+    const httpParser = new this.nativeModules.httpParser();
+
+    const testRequests = [
+      this.generateSimpleHTTPRequest(),
+      this.generateComplexHTTPRequest(),
+      this.generateLargeHeadersRequest(),
+      this.generateJSONPostRequest(),
+      this.generateMultipartRequest()
+    ];
+
+    for (let i = 0; i < testRequests.length; i++) {
+      const request = testRequests[i];
+      const result = await this.benchmarkFunction(
+        `http_parse_request_${i}`,
+        () => httpParser.parseRequest(request),
+        { iterations: 10000 }
+      );
+
+      result.throughputMBps = (request.length / (1024 * 1024)) / (result.averageTime / 1000);
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  // Benchmark memory manager
+  async benchmarkMemoryManager(): Promise<BenchmarkResult[]> {
+    const results: BenchmarkResult[] = [];
+
+    if (!this.nativeModules.memoryManager) {
+      console.warn('Memory Manager not available');
+      return results;
+    }
+
+    const memoryManager = new this.nativeModules.memoryManager();
+
+    const sizes = [64, 256, 1024, 4096, 16384];
+
+    for (const size of sizes) {
+      // Allocation benchmark
+      const allocResult = await this.benchmarkFunction(
+        `memory_alloc_${size}`,
+        () => memoryManager.allocate(size),
+        { iterations: 10000 }
+      );
+
+      // Pool hit rate benchmark
+      const poolResult = await this.benchmarkFunction(
+        `memory_pool_${size}`,
+        () => {
+          const ptr = memoryManager.allocate(size);
+          memoryManager.deallocate(ptr);
+          return memoryManager.allocate(size);
+        },
+        { iterations: 10000 }
+      );
+
+      results.push(allocResult, poolResult);
+    }
+
+    return results;
+  }
+
+  // Core benchmarking function with enhanced metrics
+  async benchmarkFunction(
+    name: string,
+    fn: Function,
+    options: { iterations?: number; warmup?: number; timeout?: number } = {}
+  ): Promise<BenchmarkResult> {
+    const { iterations = 1000, warmup = 100, timeout = 30000 } = options;
+
+    const times: number[] = [];
+    const memoryUsages: number[] = [];
+    let usedSIMD = false;
+
+    // Warmup
+    for (let i = 0; i < warmup; i++) {
+      try {
+        await fn();
+      } catch (error) {
+        // Ignore warmup errors
+      }
+    }
+
+    // Clear memory and force GC
+    if (global.gc) {
+      global.gc();
+    }
+
+    const startMemory = process.memoryUsage().heapUsed;
+    const startCPU = process.cpuUsage();
+    const startTime = performance.now();
+
+    // Main benchmark loop
+    for (let i = 0; i < iterations; i++) {
+      const iterationStart = performance.now();
+
+      try {
+        const result = await fn();
+
+        // Check if result indicates SIMD usage
+        if (result && typeof result === 'object' && result.usedSIMD) {
+          usedSIMD = true;
+        }
+      } catch (error) {
+        console.warn(`Error in benchmark ${name}, iteration ${i}:`, error.message);
+        continue;
+      }
+
+      const iterationEnd = performance.now();
+      times.push(iterationEnd - iterationStart);
+
+      // Sample memory usage periodically
+      if (i % 100 === 0) {
+        memoryUsages.push(process.memoryUsage().heapUsed);
+      }
+
+      // Timeout check
+      if (performance.now() - startTime > timeout) {
+        console.warn(`Benchmark ${name} timed out after ${i + 1} iterations`);
+        break;
+      }
+    }
+
+    const endCPU = process.cpuUsage(startCPU);
+    const endMemory = process.memoryUsage().heapUsed;
+
+    // Calculate statistics
+    const validTimes = times.filter(t => !isNaN(t) && t > 0);
+    const averageTime = validTimes.reduce((a, b) => a + b, 0) / validTimes.length;
+    const minTime = Math.min(...validTimes);
+    const maxTime = Math.max(...validTimes);
+    const totalTime = validTimes.reduce((a, b) => a + b, 0);
+    const operationsPerSecond = 1000 / averageTime;
+    const memoryUsed = Math.max(0, endMemory - startMemory);
+    const cpuUtilization = (endCPU.user + endCPU.system) / 1000; // Convert to milliseconds
+
+    const result: BenchmarkResult = {
+      name,
+      operationsPerSecond,
+      averageTime,
+      minTime,
+      maxTime,
+      totalTime,
+      iterations: validTimes.length,
+      memoryUsed,
+      usedSIMD,
+      cpuUtilization
+    };
+
+    // Store result
+    if (!this.results.has(name)) {
+      this.results.set(name, []);
+    }
+    this.results.get(name)!.push(result);
+
+    return result;
+  }
+
+  // Run comprehensive benchmark suite
+  async runComprehensiveBenchmarks(): Promise<NativeModuleBenchmarks> {
+    console.log('Starting comprehensive native module benchmarks...');
+
+    const results: NativeModuleBenchmarks = {
+      simdOptimizer: [],
+      jsonProcessor: [],
+      compressionEngine: [],
+      httpParser: [],
+      memoryManager: []
+    };
+
+    try {
+      console.log('Benchmarking SIMD Optimizer...');
+      results.simdOptimizer = await this.benchmarkSIMDOptimizer();
+
+      console.log('Benchmarking JSON Processor...');
+      results.jsonProcessor = await this.benchmarkJSONProcessor();
+
+      console.log('Benchmarking Compression Engine...');
+      results.compressionEngine = await this.benchmarkCompressionEngine();
+
+      console.log('Benchmarking HTTP Parser...');
+      results.httpParser = await this.benchmarkHTTPParser();
+
+      console.log('Benchmarking Memory Manager...');
+      results.memoryManager = await this.benchmarkMemoryManager();
+
+    } catch (error) {
+      console.error('Error during benchmarking:', error);
+    }
+
+    return results;
+  }
+
+  // Generate comprehensive benchmark report
+  generateReport(results: NativeModuleBenchmarks): string {
+    let report = '# NexureJS Native Modules Performance Report\n\n';
+    report += `Generated: ${new Date().toISOString()}\n`;
+    report += `Platform: ${process.platform} ${process.arch}\n`;
+    report += `Node.js: ${process.version}\n`;
+    report += `CPU Cores: ${cpus().length}\n\n`;
+
+    // SIMD Optimizer Report
+    if (results.simdOptimizer.length > 0) {
+      report += '## SIMD Optimizer Performance\n\n';
+      report += '| Operation | Size | Ops/sec | Avg Time (ms) | SIMD Speedup | Vectorization Efficiency |\n';
+      report += '|-----------|------|---------|---------------|--------------|---------------------------|\n';
+
+      for (const result of results.simdOptimizer) {
+        report += `| ${result.name} | - | ${result.operationsPerSecond.toFixed(0)} | ${result.averageTime.toFixed(3)} | ${result.simdSpeedup.toFixed(2)}x | ${(result.vectorizationEfficiency * 100).toFixed(1)}% |\n`;
+      }
+      report += '\n';
+    }
+
+    // JSON Processor Report
+    if (results.jsonProcessor.length > 0) {
+      report += '## JSON Processor Performance\n\n';
+      report += '| Operation | Ops/sec | Avg Time (ms) | Memory Used (KB) |\n';
+      report += '|-----------|---------|---------------|------------------|\n';
+
+      for (const result of results.jsonProcessor) {
+        report += `| ${result.name} | ${result.operationsPerSecond.toFixed(0)} | ${result.averageTime.toFixed(3)} | ${(result.memoryUsed / 1024).toFixed(1)} |\n`;
+      }
+      report += '\n';
+    }
+
+    // Add similar sections for other modules...
+
+    return report;
+  }
+
+  // Save benchmark results to file
+  async saveBenchmarkResults(results: NativeModuleBenchmarks, filename?: string): Promise<void> {
+    const outputFile = filename || `benchmark-results-${Date.now()}.json`;
+    const outputPath = path.join(process.cwd(), 'benchmarks', outputFile);
+
+    // Ensure benchmarks directory exists
+    const benchmarksDir = path.dirname(outputPath);
+    if (!fs.existsSync(benchmarksDir)) {
+      fs.mkdirSync(benchmarksDir, { recursive: true });
+    }
+
+    const data = {
+      timestamp: new Date().toISOString(),
+      platform: {
+        os: process.platform,
+        arch: process.arch,
+        node: process.version,
+        cpus: cpus().length
+      },
+      results
+    };
+
+    fs.writeFileSync(outputPath, JSON.stringify(data, null, 2));
+    console.log(`Benchmark results saved to: ${outputPath}`);
+  }
+
+  // Helper methods for generating test data
+  private generateTestData(operation: string, size: number): any {
+    switch (operation) {
+      case 'arraySumFloat32':
+      case 'arrayMultiply':
+        return new Float32Array(size).fill(0).map(() => Math.random());
+
+      case 'arraySumFloat64':
+      case 'arrayMultiplyFloat64':
+        return new Float64Array(size).fill(0).map(() => Math.random());
+
+      case 'arraySumInt32':
+        return new Int32Array(size).fill(0).map(() => Math.floor(Math.random() * 1000));
+
+      case 'arrayDotProduct':
+        return [
+          new Float32Array(size).fill(0).map(() => Math.random()),
+          new Float32Array(size).fill(0).map(() => Math.random())
+        ];
+
+      case 'arrayConvolve':
+        return [
+          new Float32Array(size).fill(0).map(() => Math.random()),
+          new Float32Array(8).fill(0).map(() => Math.random()) // Kernel
+        ];
+
+      case 'fastMemcpy':
+      case 'fastMemset':
+        return Buffer.alloc(size);
+
+      case 'stringSearch':
+        const haystack = 'a'.repeat(size);
+        return [haystack, 'aa'];
+
+      default:
+        return Buffer.alloc(size);
+    }
+  }
+
+  private callSIMDOperation(simdOpt: any, operation: string, testData: any): any {
+    switch (operation) {
+      case 'arraySumFloat32':
+        return simdOpt.arraySumFloat32(testData);
+      case 'arraySumFloat64':
+        return simdOpt.arraySumFloat64(testData);
+      case 'arraySumInt32':
+        return simdOpt.arraySumInt32(testData);
+      case 'arrayMultiply':
+        return simdOpt.arrayMultiply(testData, testData);
+      case 'arrayMultiplyFloat64':
+        return simdOpt.arrayMultiplyFloat64(testData, testData);
+      case 'arrayDotProduct':
+        return simdOpt.arrayDotProduct(testData[0], testData[1]);
+      case 'arrayConvolve':
+        return simdOpt.arrayConvolve(testData[0], testData[1]);
+      case 'fastMemcpy':
+        return simdOpt.fastMemcpy(testData);
+      case 'fastMemset':
+        return simdOpt.fastMemset(testData, 0x42);
+      case 'stringSearch':
+        return simdOpt.stringSearch(testData[0], testData[1]);
+      default:
+        throw new Error(`Unknown operation: ${operation}`);
+    }
+  }
+
+  // Additional helper methods...
+  private async benchmarkScalarVersion(operation: string, testData: any): Promise<BenchmarkResult | null> {
+    // Implement scalar versions for comparison
+    // This would require implementing JavaScript equivalents
+    return null;
+  }
+
+  private calculateVectorizationEfficiency(result: BenchmarkResult): number {
+    // Estimate vectorization efficiency based on performance characteristics
+    return Math.min(1.0, result.operationsPerSecond / 1000000);
+  }
+
+  private estimateCacheHitRate(dataSize: number): number {
+    // Rough estimate based on data size and typical cache sizes
+    if (dataSize < 32 * 1024) return 0.95;      // L1 cache
+    if (dataSize < 256 * 1024) return 0.85;     // L2 cache
+    if (dataSize < 8 * 1024 * 1024) return 0.7; // L3 cache
+    return 0.5; // Main memory
+  }
+
+  // Test data generators
+  private generateSmallJSON(): string {
+    return JSON.stringify({ id: 1, name: 'test', active: true });
+  }
+
+  private generateLargeJSON(): string {
+    const obj: any = { items: [] };
+    for (let i = 0; i < 1000; i++) {
+      obj.items.push({
+        id: i,
+        name: `item_${i}`,
+        value: Math.random(),
+        tags: [`tag_${i % 10}`, `category_${i % 5}`],
+        metadata: {
+          created: new Date().toISOString(),
+          updated: new Date().toISOString(),
+          version: 1
+        }
+      });
+    }
+    return JSON.stringify(obj);
+  }
+
+  private generateNumberArray(size: number): string {
+    const arr = Array.from({ length: size }, () => Math.random());
+    return JSON.stringify(arr);
+  }
+
+  private generateNestedJSON(depth: number, width: number): string {
+    const generate = (currentDepth: number): any => {
+      if (currentDepth === 0) {
+        return Math.random();
+      }
+
+      const obj: any = {};
+      for (let i = 0; i < width; i++) {
+        obj[`key_${i}`] = generate(currentDepth - 1);
+      }
+      return obj;
+    };
+
+    return JSON.stringify(generate(depth));
+  }
+
+  private generateMixedJSON(): string {
+    return JSON.stringify({
+      string: 'hello world',
+      number: 42,
+      float: 3.14159,
+      boolean: true,
+      null: null,
+      array: [1, 2, 3, 'four', true],
+      object: { nested: { deep: { value: 'found' } } },
+      longString: 'a'.repeat(1000)
+    });
+  }
+
+  private generateRepetitiveText(size: number): Buffer {
+    return Buffer.from('Hello World! '.repeat(Math.ceil(size / 13)).substring(0, size));
+  }
+
+  private generateRandomText(size: number): Buffer {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ';
+    let result = '';
+    for (let i = 0; i < size; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return Buffer.from(result);
+  }
+
+  private generateStructuredBinary(size: number): Buffer {
+    const buffer = Buffer.alloc(size);
+    for (let i = 0; i < size; i += 4) {
+      buffer.writeUInt32LE(i, i);
+    }
+    return buffer;
+  }
+
+  private generateRandomBinary(size: number): Buffer {
+    const buffer = Buffer.alloc(size);
+    for (let i = 0; i < size; i++) {
+      buffer[i] = Math.floor(Math.random() * 256);
+    }
+    return buffer;
+  }
+
+  private generateSimpleHTTPRequest(): string {
+    return 'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n';
+  }
+
+  private generateComplexHTTPRequest(): string {
+    return `POST /api/data HTTP/1.1\r
+Host: api.example.com\r
+User-Agent: Mozilla/5.0 (compatible; NexureJS/1.0)\r
+Accept: application/json\r
+Content-Type: application/json\r
+Content-Length: 25\r
+Authorization: Bearer token123\r
+\r
+{"key": "value", "id": 1}`;
+  }
+
+  private generateLargeHeadersRequest(): string {
+    let request = 'GET /large-headers HTTP/1.1\r\nHost: example.com\r\n';
+    for (let i = 0; i < 50; i++) {
+      request += `X-Custom-Header-${i}: ${'value'.repeat(20)}\r\n`;
+    }
+    request += '\r\n';
+    return request;
+  }
+
+  private generateJSONPostRequest(): string {
+    const data = JSON.stringify({ data: 'a'.repeat(1000) });
+    return `POST /json HTTP/1.1\r
+Host: example.com\r
+Content-Type: application/json\r
+Content-Length: ${data.length}\r
+\r
+${data}`;
+  }
+
+  private generateMultipartRequest(): string {
+    const boundary = 'boundary123';
+    const body = `--${boundary}\r
+Content-Disposition: form-data; name="file"; filename="test.txt"\r
+Content-Type: text/plain\r
+\r
+${'test data '.repeat(100)}\r
+--${boundary}--\r\n`;
+
+    return `POST /upload HTTP/1.1\r
+Host: example.com\r
+Content-Type: multipart/form-data; boundary=${boundary}\r
+Content-Length: ${body.length}\r
+\r
+${body}`;
+  }
+}
+
+// Export convenience function
+export async function runBenchmarks(): Promise<NativeModuleBenchmarks> {
+  const benchmark = new PerformanceBenchmark();
+  return await benchmark.runComprehensiveBenchmarks();
+}
+
+// CLI interface
+if (require.main === module) {
+  (async () => {
+    const benchmark = new PerformanceBenchmark();
+    const results = await benchmark.runComprehensiveBenchmarks();
+
+    console.log(`\n${  benchmark.generateReport(results)}`);
+    await benchmark.saveBenchmarkResults(results);
+
+    console.log('\nBenchmarks completed successfully!');
+  })().catch(console.error);
+}

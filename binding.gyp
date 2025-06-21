@@ -4,52 +4,82 @@
       "target_name": "nexurejs_native",
       "sources": [
         "src/native/main.cc",
-        "src/native/http/http_parser.cc",
-        "src/native/http/object_pool.cc",
-        "src/native/routing/radix_router.cc",
-        "src/native/json/json_processor.cc",
-        "src/native/url/url_parser.cc",
-        "src/native/schema/schema_validator.cc",
-        "src/native/compression/compression.cc",
-        "src/native/websocket/websocket.cc",
-        "src/native/json/simdjson_wrapper.cpp",
-        "src/native/cache/lru_cache.cc",
-        "src/native/middleware/middleware_chain.cc",
-        "src/native/crypto/hash_functions.cc",
         "src/native/encoding/string_encoder.cc",
-        "src/native/file/file_operations.cc",
-        "src/native/stream/stream_processor.cc",
-        "src/native/compression/compression_engine.cc",
-        "src/native/rate/rate_limiter.cc",
-        "src/native/protobuf/protocol_buffers.cc",
+        "src/native/memory/memory_manager.cc",
+        "src/native/memory/advanced_memory_optimizer_simple.cc",
+        "src/native/simd/advanced_simd_profiler.cc",
+        "src/native/thread/thread_pool.cc",
         "src/native/validation/validation_engine.cc",
-        "src/native/thread/thread_pool.cc"
+        "src/native/compression/compression_engine.cc",
+        "src/native/stream/stream_processor.cc",
+        "src/native/rate/rate_limiter.cc",
+        "src/native/url/url_parser.cc"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
         "src/native",
-        "src/native/json",
-        "<!@(node -e \"console.log(process.config.variables.node_shared ? '/usr/include/nodejs' : require('path').dirname(require.resolve('node-addon-api')) + '/../..')\")",
-        "<!@(node -e \"console.log(require('path').dirname(process.execPath) + '/../include/node')\")"
+        "src/native/http",
+        "src/native/encoding",
+        "src/native/memory",
+        "src/native/simd",
+        "src/native/thread",
+        "src/native/validation",
+        "src/native/compression",
+        "src/native/stream",
+        "src/native/rate",
+        "src/native/url"
+      ],
+      "libraries": [
+        "-lz"
       ],
       "conditions": [
         ["OS!='win'", {
-          "include_dirs": [
-            "/usr/local/include",
-            "node_modules/simdjson/simdjson/src",
-            "node_modules/simdjson/include"
+          "cflags_cc": [
+            "-O3",
+            "-ffast-math",
+            "-funroll-loops",
+            "-fomit-frame-pointer",
+            "-finline-functions",
+            "-march=native",
+            "-mtune=native",
+            "-mavx2",
+            "-msse4.2",
+            "-flto",
+            "-fvectorize",
+            "-Wno-unused-parameter",
+            "-Wno-sign-compare",
+            "-Wno-unused-variable"
           ]
         }],
         ["OS=='mac'", {
-          "include_dirs": [
-            "/opt/homebrew/include",
-            "/usr/local/include"
+          "cflags_cc": [
+            "-O3",
+            "-ffast-math",
+            "-funroll-loops",
+            "-fomit-frame-pointer",
+            "-finline-functions",
+            "-march=native",
+            "-mtune=native",
+            "-flto",
+            "-fvectorize",
+            "-Wno-unused-parameter",
+            "-Wno-sign-compare",
+            "-Wno-unused-variable"
           ],
+          "xcode_settings": {
+            "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
+            "CLANG_CXX_LIBRARY": "libc++",
+            "MACOSX_DEPLOYMENT_TARGET": "10.15",
+            "WARNING_CFLAGS": [
+              "-Wno-unused-parameter",
+              "-Wno-sign-compare",
+              "-Wno-unused-variable"
+            ]
+          }
+        }],
+        ["OS=='win'", {
           "libraries": [
-            "-L/opt/homebrew/lib",
-            "-luv",
-            "-lcrypto",
-            "-lssl"
+            "zlib.lib"
           ]
         }]
       ],
@@ -58,56 +88,19 @@
       ],
       "defines": [
         "NAPI_VERSION=8",
-        "NAPI_DISABLE_CPP_EXCEPTIONS"
+        "NAPI_DISABLE_CPP_EXCEPTIONS",
+        "NEXURE_OPTIMIZED=1",
+        "ENABLE_SIMD=1",
+        "ENABLE_VECTORIZATION=1",
+        "ENABLE_ADVANCED_MEMORY=1"
       ],
       "cflags!": [ "-fno-exceptions" ],
-      "cflags_cc!": [ "-fno-exceptions" ],
-      "cflags_cc": [
-        "-Wno-error=unused-but-set-variable",
-        "-Wno-error=unused-variable"
-      ],
-      "xcode_settings": {
-        "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
-        "CLANG_CXX_LIBRARY": "libc++",
-        "MACOSX_DEPLOYMENT_TARGET": "10.15",
-        "WARNING_CFLAGS": [
-          "-Wno-bitwise-instead-of-logical",
-          "-Wno-ambiguous-reversed-operator",
-          "-Werror",
-          "-Wno-error=unused-but-set-variable",
-          "-Wno-error=unused-variable"
-        ]
-      },
-      "msvs_settings": {
-        "VCCLCompilerTool": {
-          "ExceptionHandling": 1,
-          "AdditionalOptions": [
-            "/w34100",
-            "/w34189"
-          ]
-        }
-      }
+      "cflags_cc!": [ "-fno-exceptions" ]
     },
     {
       "target_name": "nothing",
       "type": "static_library",
-      "sources": [ "nothing.c" ],
-      "configurations": {
-        "Release": {
-          "msvs_settings": {
-            "VCCLCompilerTool": {
-              "RuntimeLibrary": 0,
-              "Optimization": 3,
-              "FavorSizeOrSpeed": 1,
-              "InlineFunctionExpansion": 2,
-              "WholeProgramOptimization": "true",
-              "OmitFramePointers": "true",
-              "EnableFunctionLevelLinking": "true",
-              "EnableIntrinsicFunctions": "true"
-            }
-          }
-        }
-      }
+      "sources": [ "nothing.c" ]
     }
   ]
 }

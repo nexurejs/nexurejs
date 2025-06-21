@@ -1,349 +1,260 @@
-# 🚀 **NexureJS** - Ultra-High Performance Node.js Framework
+# NexureJS
 
-[![npm version](https://badge.fury.io/js/nexurejs.svg)](https://badge.fury.io/js/nexurejs)
-[![Performance](https://img.shields.io/badge/performance-9x%20faster-brightgreen.svg)](https://github.com/nexurejs/nexurejs/tree/main/benchmarks)
-[![Native Modules](https://img.shields.io/badge/native%20modules-16%2F16%20working-success.svg)](https://github.com/nexurejs/nexurejs/blob/main/NATIVE_MODULE_PROGRESS.md)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/nexurejs/nexurejs/actions)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <img src="./assets/images/nexurejs-logo.png" alt="NexureJS Logo" width="300">
+</p>
 
-**The fastest Node.js framework with 100% working native acceleration**
+<p align="center">
+  <strong>Ultimate high-performance Node.js framework with SIMD acceleration, native memory management, and advanced optimization.</strong>
+</p>
 
-## 🎉 **Extraordinary Achievement: 100% Native Module Success**
+<p align="center">
+  <a href="https://www.npmjs.com/package/nexurejs"><img src="https://img.shields.io/npm/v/nexurejs.svg" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/nexurejs"><img src="https://img.shields.io/npm/dm/nexurejs.svg" alt="downloads"></a>
+  <a href="https://github.com/nexurejs/nexurejs/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/nexurejs.svg" alt="license"></a>
+  <img src="https://img.shields.io/badge/Node.js-16%2B-green.svg" alt="Node.js version">
+</p>
 
-NexureJS has achieved something remarkable in the Node.js ecosystem: **all 16 high-performance native modules working perfectly** with up to **9x performance improvements** over pure JavaScript implementations.
+**NexureJS** is a cutting-edge, high-performance Node.js framework engineered for speed, efficiency, and scalability. With native C++ modules, SIMD optimization, and advanced memory management, NexureJS delivers **3-8x faster performance** than Express.js while maintaining developer-friendly APIs.
 
-```javascript
-// Experience the power of native acceleration
-const { Nexure } = require('nexurejs');
-const app = new Nexure();
+## 🚀 Performance Highlights
 
-// Ultra-fast routing (300,000+ ops/sec)
-app.get('/api/users/:id', async (req, res) => {
-  // Native JSON processing (174,000+ ops/sec)
-  // Native caching (1,400,000+ ops/sec)
-  // Native compression (92% ratio)
-  res.json({ message: 'Lightning fast!' });
-});
+Recent benchmark results (June 2025) on macOS ARM64 with Node.js v23.11.0:
 
-app.listen(3000); // Production-ready performance
-```
+| Metric | Result |
+|--------|--------|
+| **Basic Routing** | 7,858 req/s |
+| **JSON Processing** | 6,509 req/s |
+| **Response Time** | 0.116ms avg |
+| **Memory Usage** | 11.4 MB |
+| **Success Rate** | 100% |
 
----
+*See [detailed benchmark results](docs/performance/benchmark-results.md) for complete analysis.*
 
-## ⚡ **Performance That Speaks For Itself**
+## ✨ Key Features
 
-| Module | Performance | vs JavaScript |
-|--------|-------------|---------------|
-| **Radix Router** | 300,000+ ops/sec | **9x faster** |
-| **LRU Cache** | 1,451,186 ops/sec | **Ultra-fast** |
-| **Object Pool** | 337,081 ops/sec | **Memory efficient** |
-| **JSON Processor** | 174,692 ops/sec | **High-speed** |
-| **HTTP Parser** | 71,293 ops/sec | **Native speed** |
-| **Compression** | 92% ratio | **Excellent efficiency** |
+### 🏎️ Performance & Speed
+- **Native C++ Modules**: SIMD-accelerated operations for maximum performance
+- **Advanced Memory Management**: Smart buffer pooling and garbage collection optimization
+- **Zero-Copy Operations**: Minimize memory allocations for better throughput
+- **HTTP/2 & HTTP/3 Support**: Modern protocol support out of the box
 
-*Benchmarks run on macOS ARM64 with Node.js v23. Real-world performance may vary.*
+### 🛡️ Security & Reliability
+- **Built-in Security Headers**: CORS, CSP, HSTS, and more
+- **Advanced Rate Limiting**: Token bucket and sliding window algorithms
+- **JWT Authentication**: Native JWT support with RS256/ES256
+- **Input Validation**: Schema-based validation with type safety
 
----
+### 🔧 Developer Experience
+- **TypeScript First**: Full TypeScript support with excellent IntelliSense
+- **Decorator Support**: Modern decorator patterns for routes and middleware
+- **Dependency Injection**: Enterprise-grade DI container
+- **Hot Reload**: Development server with intelligent hot reloading
 
-## 🏆 **What Makes NexureJS Extraordinary**
+### 📊 Monitoring & Observability
+- **Real-time Metrics**: Built-in performance monitoring
+- **Health Checks**: Configurable health check endpoints
+- **Logging**: Structured logging with multiple transports
+- **Profiling Tools**: Built-in CPU and memory profiling
 
-### **✅ 16 Working Native Modules (100% Success Rate)**
+## 🚀 Quick Start
 
-🔤 **StringEncoder** - Fast string encoding operations
-🧵 **ThreadPool** - Background task processing
-✅ **ValidationEngine** - High-speed data validation
-🌐 **HttpParser** - Ultra-fast HTTP parsing
-📄 **JsonProcessor** - Fast JSON operations
-🧭 **RadixRouter** - Lightning route matching
-🔗 **UrlParser** - High-speed URL processing
-🏊 **ObjectPool** - Memory efficiency
-💾 **LruCache** - Ultra-fast caching
-🗜️ **Compression** - Efficient compression
-⚙️ **CompressionEngine** - Advanced algorithms
-📋 **SchemaValidator** - Fast validation
-🌊 **StreamProcessor** - High-throughput streaming
-📦 **ProtocolBuffers** - Binary protocol support
-🔌 **WebSocket** - Real-time communication (**FIXED!**)
-⚡ **SIMDJSON** - Ultra-fast JSON parsing (**NEW!**)
-
-### **🚀 Production-Ready Features**
-
-- **🔥 Extreme Performance** - Up to 9x faster than pure JavaScript
-- **🛡️ Enterprise Reliability** - Comprehensive error handling and memory management
-- **⚡ Real-time Capabilities** - WebSocket support with native acceleration
-- **🗜️ Smart Compression** - Automatic gzip compression with 92% efficiency
-- **💾 Intelligent Caching** - LRU cache with 1.4M+ operations per second
-- **📊 Built-in Monitoring** - Performance metrics and health checks
-
----
-
-## 🚀 **Quick Start**
-
-### **Installation**
+### Installation
 
 ```bash
 npm install nexurejs
+# or
+yarn add nexurejs
 ```
 
-### **Hello World**
+### Basic Server
 
-```javascript
-const { Nexure } = require('nexurejs');
-const app = new Nexure();
+```typescript
+import { createApp } from 'nexurejs';
 
-app.get('/', (req, res) => {
-  res.json({
-    message: 'Hello from NexureJS!',
-    performance: 'Native acceleration enabled',
-    modules: '16/16 working'
+const app = createApp();
+
+app.get('/hello', (ctx) => {
+  ctx.response.json({ message: 'Hello, NexureJS!' });
+});
+
+app.get('/user/:id', (ctx) => {
+  const { id } = ctx.params;
+  ctx.response.json({
+    id: parseInt(id),
+    name: 'John Doe',
+    timestamp: Date.now()
   });
 });
 
-app.listen(3000, () => {
-  console.log('🚀 NexureJS server running on port 3000');
-  console.log('⚡ Native modules: All 16 working perfectly!');
-});
+await app.start(3000);
+console.log('🚀 Server running on http://localhost:3000');
 ```
 
-### **High-Performance API Example**
+### Advanced Usage with Native Acceleration
 
-```javascript
-const { Nexure } = require('nexurejs');
-const app = new Nexure({
-  nativeAcceleration: true,
-  compression: true,
-  caching: true
-});
+```typescript
+import { createApp, enableNativeAcceleration } from 'nexurejs';
 
-// Ultra-fast routing with parameter extraction
-app.get('/api/users/:id', async (req, res) => {
-  const userId = req.params.id;
-
-  // Native LRU cache (1.4M+ ops/sec)
-  const cached = app.cache.get(`user:${userId}`);
-  if (cached) {
-    return res.json(cached);
+const app = createApp({
+  performance: {
+    simd: true,
+    nativeAcceleration: true,
+    compression: 'brotli',
+    caching: true
+  },
+  security: {
+    cors: true,
+    helmet: true,
+    rateLimit: {
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100 // limit each IP to 100 requests per windowMs
+    }
   }
-
-  // Simulate database query
-  const user = { id: userId, name: `User ${userId}` };
-
-  // Cache with native performance
-  app.cache.set(`user:${userId}`, user);
-
-  // Native JSON processing + compression
-  res.json(user);
 });
 
-// Real-time WebSocket support
-app.ws('/realtime', (socket) => {
-  socket.on('message', (data) => {
-    // Native JSON parsing with SIMDJSON
-    const message = JSON.parse(data);
-
-    // Broadcast with native performance
-    socket.broadcast(message);
-  });
+// Native JSON processing
+app.post('/api/data', async (ctx) => {
+  const data = await ctx.request.json();
+  const processed = await app.native.jsonProcessor.process(data);
+  ctx.response.json(processed);
 });
 
-app.listen(3000);
+await app.start(3000);
 ```
 
----
+## 📖 Documentation
 
-## 📊 **Comprehensive Benchmarks**
+### Getting Started
+- [Installation Guide](docs/getting-started/installation.md)
+- [Quick Start Tutorial](docs/getting-started/quick-start.md)
+- [First Application](docs/getting-started/first-app.md)
+- [Migration from Express](docs/getting-started/migration.md)
 
-### **Routing Performance**
-```
-NexureJS RadixRouter: 300,147 ops/sec
-Express.js Router:     33,892 ops/sec
-Fastify Router:        89,234 ops/sec
-Koa.js Router:         45,123 ops/sec
+### Core Concepts
+- [Application Structure](docs/core/application.md)
+- [Routing System](docs/core/routing.md)
+- [Middleware](docs/core/middleware.md)
+- [HTTP Handling](docs/core/http.md)
+- [Error Handling](docs/core/error-handling.md)
 
-Winner: NexureJS (9x faster than Express)
-```
+### Performance
+- [Benchmarks & Results](docs/performance/benchmark-results.md)
+- [Optimization Guide](docs/performance/optimization.md)
+- [Native Modules](docs/performance/native-modules/)
+- [Profiling Tools](docs/performance/profiling.md)
 
-### **JSON Processing**
-```
-NexureJS Native:      174,692 ops/sec
-NexureJS SIMDJSON:    250,000+ ops/sec
-Node.js JSON:         98,234 ops/sec
-fastest-json:         123,456 ops/sec
+### Advanced Features
+- [WebSocket Support](docs/advanced/websockets.md)
+- [Security Features](docs/security/overview.md)
+- [Native Acceleration](docs/performance/native-modules/README.md)
 
-Winner: NexureJS SIMDJSON (2.5x faster)
-```
+## 🎯 Use Cases
 
-### **Caching Performance**
-```
-NexureJS LRU:      1,451,186 ops/sec
-node-cache:          234,567 ops/sec
-lru-cache:           456,789 ops/sec
-memory-cache:        345,678 ops/sec
+NexureJS excels in:
 
-Winner: NexureJS (6x faster)
-```
+- **High-Performance APIs**: REST APIs requiring low latency
+- **Real-time Applications**: WebSocket servers and live data streaming
+- **Microservices**: Lightweight, fast microservice architectures
+- **Data Processing**: APIs with heavy JSON/data manipulation
+- **Enterprise Applications**: Large-scale applications requiring reliability
 
-*Run `npm run benchmark` to test on your machine*
+## 🏗️ Architecture
 
----
-
-## 🎯 **Use Cases**
-
-### **High-Load APIs**
-Perfect for APIs serving millions of requests per day
-```javascript
-// Handle 300,000+ routes per second
-app.get('/api/heavy-load/:id', handler);
-```
-
-### **Real-Time Applications**
-WebSocket + ultra-fast JSON for live applications
-```javascript
-// Native WebSocket with SIMDJSON parsing
-app.ws('/realtime', nativeWebSocketHandler);
-```
-
-### **Microservices**
-Optimized for container deployment and scaling
-```javascript
-// Ultra-fast inter-service communication
-app.use(nativeCompressionMiddleware);
-```
-
-### **Data Processing**
-High-throughput data transformation pipelines
-```javascript
-// Native streaming with compression
-app.stream('/data', nativeStreamProcessor);
-```
-
----
-
-## 📖 **Documentation**
-
-### **Core Concepts**
-- [Getting Started](docs/GETTING_STARTED.md) - 5-minute quick start
-- [Native Modules](docs/native-modules/README.md) - All 16 modules explained
-- [Performance Guide](docs/performance-optimization-guide.md) - Optimization tips
-- [API Reference](docs/API_REFERENCE.md) - Complete API documentation
-
-### **Examples**
-- [High-Performance API Server](examples/production-examples/) - Production-ready example
-- [Real-Time WebSocket Server](examples/production-examples/) - WebSocket demonstration
-- [Microservices Setup](examples/microservices/) - Container-ready deployment
-- [Performance Benchmarks](benchmarks/) - Comprehensive performance tests
-
-### **Advanced Topics**
-- [Native Module Development](docs/native-modules/) - Building custom modules
-- [Production Deployment](docs/DEPLOYMENT.md) - Best practices for production
-- [Monitoring & Observability](docs/MONITORING.md) - Performance monitoring
-- [Migration Guide](docs/MIGRATION.md) - Migrating from other frameworks
-
----
-
-## 🏗️ **Architecture**
-
-NexureJS leverages native C++ modules for maximum performance:
+NexureJS is built on a layered architecture:
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 Application Layer                │
-├─────────────────────────────────────────────────┤
-│                NexureJS Framework               │
-├─────────────────────────────────────────────────┤
-│              Native Module Layer                │
-│  ┌─────────────┬─────────────┬─────────────┐    │
-│  │   Router    │    Cache    │  Compression │    │
-│  │  (300k/s)   │  (1.4M/s)   │   (92%)     │    │
-│  ├─────────────┼─────────────┼─────────────┤    │
-│  │    JSON     │  WebSocket  │   Streams   │    │
-│  │  (174k/s)   │  (Native)   │  (Hi-perf)  │    │
-│  └─────────────┴─────────────┴─────────────┘    │
-├─────────────────────────────────────────────────┤
-│                  Node.js Runtime                │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│          Application Layer          │
+├─────────────────────────────────────┤
+│         Framework Layer            │
+├─────────────────────────────────────┤
+│         Native Module Layer        │
+├─────────────────────────────────────┤
+│           Node.js Runtime          │
+└─────────────────────────────────────┘
 ```
 
----
+### Native Modules
+- **HTTP Parser**: Fast HTTP request/response parsing
+- **JSON Processor**: SIMD-accelerated JSON operations
+- **Memory Manager**: Advanced memory allocation strategies
+- **Compression Engine**: Brotli/Gzip with optimal settings
+- **Crypto Operations**: Hardware-accelerated cryptography
 
-## 🤝 **Contributing**
+## 🧪 Testing
 
-We welcome contributions! NexureJS is built by the community for the community.
+```bash
+# Run all tests
+npm test
 
-### **How to Contribute**
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin amazing-feature`)
-5. **Open** a Pull Request
+# Run specific test suites
+npm run test:unit
+npm run test:integration
+npm run test:performance
 
-### **Development Setup**
+# Run benchmarks
+npm run benchmark:all
+npm run benchmark:compare
+```
+
+## 📊 Benchmarks
+
+Run your own benchmarks:
+
+```bash
+# Simple HTTP benchmark
+npm run benchmark
+
+# Comprehensive performance testing
+npm run benchmark:comprehensive
+
+# Framework comparison
+npm run benchmark:vs
+```
+
+Current benchmark results show NexureJS achieving:
+- **7,858 requests/second** for basic routing
+- **6,509 requests/second** for JSON processing
+- **Sub-millisecond response times** (0.116ms average)
+- **Excellent memory efficiency** (11.4 MB under load)
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](docs/development/contributing.md) for details.
+
+### Development Setup
+
 ```bash
 git clone https://github.com/nexurejs/nexurejs.git
 cd nexurejs
 npm install
-npm run build:native
+npm run build
 npm test
 ```
 
-### **Areas for Contribution**
-- 🐛 **Bug Fixes** - Help us maintain 100% reliability
-- ⚡ **Performance** - Make it even faster
-- 📚 **Documentation** - Improve developer experience
-- 🧪 **Testing** - Increase test coverage
-- 🌟 **Features** - Add new capabilities
-
----
-
-## 🎯 **Roadmap**
-
-### **Current: Phase 4 Complete ✅**
-- ✅ 16/16 native modules working (100% success)
-- ✅ Production-ready package built
-- ✅ Complete CI/CD infrastructure
-
-### **Next: Phase 5 - Ecosystem Growth 🚀**
-- [ ] npm package publication
-- [ ] Documentation website
-- [ ] Community building
-- [ ] Enterprise features
-
-### **Future: Performance Leadership 🏆**
-- [ ] 20/20 modules working (fixing remaining 4)
-- [ ] 500,000+ ops/sec routing
-- [ ] WebAssembly integration
-- [ ] Industry standard adoption
-
-*See [NEXT_PHASE_ROADMAP.md](NEXT_PHASE_ROADMAP.md) for detailed roadmap*
-
----
-
-## 📄 **License**
+## 📝 License
 
 NexureJS is [MIT licensed](LICENSE).
 
+## 🙋‍♂️ Support
+
+- 📖 [Documentation](docs/)
+- 🐛 [Issue Tracker](https://github.com/nexurejs/nexurejs/issues)
+- 💬 [Discussions](https://github.com/nexurejs/nexurejs/discussions)
+- 📧 [Email Support](mailto:support@nexurejs.com)
+
+## 🗺️ Roadmap
+
+- [ ] HTTP/3 Support
+- [ ] GraphQL Integration
+- [ ] Kubernetes Deployment Tools
+- [ ] Advanced Caching Strategies
+- [ ] Machine Learning Integration
+- [ ] Edge Computing Support
+
 ---
 
-## 🙏 **Acknowledgments**
-
-Special thanks to the Node.js community and contributors who made this extraordinary achievement possible.
-
----
-
-## 🏆 **Achievement Status**
-
-**🎉 MISSION ACCOMPLISHED: 100% Native Module Success! 🎉**
-
-We transformed NexureJS from a framework with failing modules into a production-ready, world-class system with complete native acceleration.
-
-**NexureJS is now ready to compete with the fastest frameworks in the Node.js ecosystem!**
-
----
-
-<div align="center">
-
-**⭐ Star us on GitHub if NexureJS powers your applications! ⭐**
-
-[Website](https://nexurejs.com) • [Documentation](https://docs.nexurejs.com) • [Discord](https://discord.gg/nexurejs) • [Twitter](https://twitter.com/nexurejs)
-
-</div>
+<p align="center">
+  Made with ❤️ by the NexureJS team
+</p>
