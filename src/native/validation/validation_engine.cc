@@ -390,13 +390,31 @@ Napi::Value ValidationEngine::Validate(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  if (info.Length() < 2 || !info[0].IsString() || !info[1].IsObject()) {
-    Napi::TypeError::New(env, "Expected schema name (string) and data object").ThrowAsJavaScriptException();
+  // Support both validate(schemaName, data) and validate(data) formats
+  std::string schemaName;
+  Napi::Value data;
+
+  if (info.Length() == 1 && info[0].IsObject()) {
+    // Single parameter: validate(data) - use default schema
+    schemaName = "default";
+    data = info[0];
+
+    // Create default schema if it doesn't exist
+    std::lock_guard<std::mutex> lock(schemasMutex_);
+    if (schemas_.find(schemaName) == schemas_.end()) {
+      auto schema = std::make_shared<Schema>(schemaName);
+      schema->strictMode = false; // Lenient validation for default schema
+      schemas_[schemaName] = schema;
+      metrics_.totalSchemas = schemas_.size();
+    }
+  } else if (info.Length() >= 2 && info[0].IsString() && info[1].IsObject()) {
+    // Two parameters: validate(schemaName, data)
+    schemaName = info[0].As<Napi::String>().Utf8Value();
+    data = info[1];
+  } else {
+    Napi::TypeError::New(env, "Expected validate(data) or validate(schemaName, data)").ThrowAsJavaScriptException();
     return env.Null();
   }
-
-  std::string schemaName = info[0].As<Napi::String>().Utf8Value();
-  Napi::Value data = info[1];
 
   // Find the schema
   std::shared_ptr<Schema> schema;
@@ -405,10 +423,21 @@ Napi::Value ValidationEngine::Validate(const Napi::CallbackInfo& info) {
     auto it = schemas_.find(schemaName);
     if (it == schemas_.end()) {
       metrics_.cacheMisses++;
-      Napi::Error::New(env, "Schema not found: " + schemaName).ThrowAsJavaScriptException();
-      return env.Null();
+
+      // For default schema, create a permissive one
+      if (schemaName == "default") {
+        auto defaultSchema = std::make_shared<Schema>(schemaName);
+        defaultSchema->strictMode = false;
+        schemas_[schemaName] = defaultSchema;
+        schema = defaultSchema;
+        metrics_.totalSchemas = schemas_.size();
+      } else {
+        Napi::Error::New(env, "Schema not found: " + schemaName).ThrowAsJavaScriptException();
+        return env.Null();
+      }
+    } else {
+      schema = it->second;
     }
-    schema = it->second;
     metrics_.cachedValidations++;
   }
 

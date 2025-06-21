@@ -2,6 +2,201 @@
 #include <algorithm>
 #include <sstream>
 #include <cstring>
+#include <chrono>
+#include <atomic>
+
+// SIMD intrinsics for optimization
+#ifdef __x86_64__
+#include <immintrin.h>
+#include <nmmintrin.h>
+#endif
+
+// Performance metrics
+namespace RouterMetrics {
+  std::atomic<uint64_t> total_lookups{0};
+  std::atomic<uint64_t> simd_string_matches{0};
+  std::atomic<uint64_t> total_lookup_time_us{0};
+  std::atomic<uint64_t> route_insertions{0};
+  std::atomic<uint64_t> cache_hits{0};
+  std::atomic<uint64_t> cache_misses{0};
+}
+
+// SIMD capability detection
+bool RadixRouter::HasAVX2() {
+#ifdef __x86_64__
+  static int avx2_supported = -1;
+  if (avx2_supported == -1) {
+    int cpuInfo[4];
+    __cpuid_count(7, 0, cpuInfo[0], cpuInfo[1], cpuInfo[2], cpuInfo[3]);
+    avx2_supported = (cpuInfo[1] & (1 << 5)) ? 1 : 0;
+  }
+  return avx2_supported == 1;
+#else
+  return false;
+#endif
+}
+
+bool RadixRouter::HasSSE42() {
+#ifdef __x86_64__
+  static int sse42_supported = -1;
+  if (sse42_supported == -1) {
+    int cpuInfo[4];
+    __cpuid(1, cpuInfo[0], cpuInfo[1], cpuInfo[2], cpuInfo[3]);
+    sse42_supported = (cpuInfo[2] & (1 << 20)) ? 1 : 0;
+  }
+  return sse42_supported == 1;
+#else
+  return false;
+#endif
+}
+
+// SIMD-optimized string comparison
+int RadixRouter::CompareStrings_SIMD(const char* str1, const char* str2, size_t length) {
+#ifdef __x86_64__
+  if (!HasAVX2() || length < 32) {
+    return std::memcmp(str1, str2, length);
+  }
+
+  const size_t simd_width = 32;
+  const size_t simd_iterations = length / simd_width;
+
+  for (size_t i = 0; i < simd_iterations; ++i) {
+    __m256i chunk1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(str1 + i * simd_width));
+    __m256i chunk2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(str2 + i * simd_width));
+
+    __m256i cmp = _mm256_cmpeq_epi8(chunk1, chunk2);
+    int mask = _mm256_movemask_epi8(cmp);
+
+    if (mask != -1) {
+      // Found difference - need to find exact position
+      for (size_t j = 0; j < simd_width; ++j) {
+        size_t pos = i * simd_width + j;
+        if (pos >= length) break;
+        if (str1[pos] != str2[pos]) {
+          return str1[pos] - str2[pos];
+        }
+      }
+    }
+  }
+
+  // Handle remaining bytes
+  for (size_t i = simd_iterations * simd_width; i < length; ++i) {
+    if (str1[i] != str2[i]) {
+      return str1[i] - str2[i];
+    }
+  }
+
+  RouterMetrics::simd_string_matches.fetch_add(1);
+  return 0;
+#else
+  return std::memcmp(str1, str2, length);
+#endif
+}
+
+// SIMD-optimized prefix matching
+size_t RadixRouter::FindCommonPrefix_SIMD(const char* str1, const char* str2,
+                                         size_t max_length) {
+#ifdef __x86_64__
+  if (!HasAVX2() || max_length < 32) {
+    // Scalar fallback
+    size_t common = 0;
+    while (common < max_length && str1[common] == str2[common]) {
+      common++;
+    }
+    return common;
+  }
+
+  const size_t simd_width = 32;
+  const size_t simd_iterations = max_length / simd_width;
+  size_t common = 0;
+
+  for (size_t i = 0; i < simd_iterations; ++i) {
+    __m256i chunk1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(str1 + i * simd_width));
+    __m256i chunk2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(str2 + i * simd_width));
+
+    __m256i cmp = _mm256_cmpeq_epi8(chunk1, chunk2);
+    int mask = _mm256_movemask_epi8(cmp);
+
+    if (mask == -1) {
+      // All 32 bytes match
+      common += simd_width;
+    } else {
+      // Find first non-matching byte
+      for (size_t j = 0; j < simd_width; ++j) {
+        if (!(mask & (1 << j))) {
+          return common + j;
+        }
+      }
+    }
+  }
+
+  // Handle remaining bytes
+  for (size_t i = common; i < max_length; ++i) {
+    if (str1[i] != str2[i]) {
+      break;
+    }
+    common++;
+  }
+
+  return common;
+#else
+  size_t common = 0;
+  while (common < max_length && str1[common] == str2[common]) {
+    common++;
+  }
+  return common;
+#endif
+}
+
+// SIMD-optimized route pattern matching
+bool RadixRouter::MatchPattern_SIMD(const std::string& pattern, const std::string& path) {
+  if (pattern.empty() || path.empty()) {
+    return false;
+  }
+
+  // Handle simple exact matches with SIMD
+  if (pattern.find('*') == std::string::npos && pattern.find(':') == std::string::npos) {
+    if (pattern.length() != path.length()) {
+      return false;
+    }
+    return CompareStrings_SIMD(pattern.c_str(), path.c_str(), pattern.length()) == 0;
+  }
+
+  // For complex patterns, fall back to scalar matching
+  return MatchPatternScalar(pattern, path);
+}
+
+// Scalar pattern matching fallback
+bool RadixRouter::MatchPatternScalar(const std::string& pattern, const std::string& path) {
+  size_t p_idx = 0, path_idx = 0;
+
+  while (p_idx < pattern.length() && path_idx < path.length()) {
+    char p_char = pattern[p_idx];
+
+    if (p_char == '*') {
+      // Wildcard - match rest of path
+      return true;
+    } else if (p_char == ':') {
+      // Parameter - skip to next slash or end
+      while (path_idx < path.length() && path[path_idx] != '/') {
+        path_idx++;
+      }
+
+      // Skip parameter name in pattern
+      while (p_idx < pattern.length() && pattern[p_idx] != '/') {
+        p_idx++;
+      }
+    } else if (p_char == path[path_idx]) {
+      // Exact character match
+      p_idx++;
+      path_idx++;
+    } else {
+      return false;
+    }
+  }
+
+  return p_idx == pattern.length() && path_idx == path.length();
+}
 
 // RadixNode implementation
 RadixNode::RadixNode() : isWildcard(false), hasHandler(false) {
@@ -30,7 +225,13 @@ Napi::Object RadixRouter::Init(Napi::Env env, Napi::Object exports) {
   Napi::Function func = DefineClass(env, "RadixRouter", {
     InstanceMethod("add", &RadixRouter::Add),
     InstanceMethod("find", &RadixRouter::Find),
-    InstanceMethod("remove", &RadixRouter::Remove)
+    InstanceMethod("remove", &RadixRouter::Remove),
+    InstanceMethod("insert", &RadixRouter::Insert),
+    InstanceMethod("lookup", &RadixRouter::Lookup),
+    InstanceMethod("clearCache", &RadixRouter::ClearCache),
+    InstanceMethod("getMetrics", &RadixRouter::GetMetrics),
+    StaticMethod("getCapabilities", &RadixRouter::GetCapabilities),
+    StaticMethod("benchmark", &RadixRouter::Benchmark),
   });
 
   exports.Set("RadixRouter", func);
@@ -498,4 +699,326 @@ Napi::Value RadixRouter::Lookup(const std::string& method, const std::string& pa
 
   // No handler found - result already has found=false
   return result;
+}
+
+// Insert route with optimizations
+Napi::Value RadixRouter::Insert(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 3 || !info[0].IsString() || !info[1].IsString() || !info[2].IsFunction()) {
+    Napi::TypeError::New(env, "Expected method, path, and handler").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  std::string method = info[0].As<Napi::String>().Utf8Value();
+  std::string path = info[1].As<Napi::String>().Utf8Value();
+  Napi::Function handler = info[2].As<Napi::Function>();
+
+  // Create route key
+  std::string route_key = method + ":" + path;
+
+  // Insert into radix tree
+  InsertRoute(route_key, handler);
+
+  // Clear cache since routes changed
+  routeCache_.clear();
+  cacheSize_ = 0;
+
+  RouterMetrics::route_insertions.fetch_add(1);
+
+  return Napi::Boolean::New(env, true);
+}
+
+// Optimized route lookup
+Napi::Value RadixRouter::Lookup(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  auto startTime = std::chrono::high_resolution_clock::now();
+
+  if (info.Length() < 2 || !info[0].IsString() || !info[1].IsString()) {
+    Napi::TypeError::New(env, "Expected method and path").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  std::string method = info[0].As<Napi::String>().Utf8Value();
+  std::string path = info[1].As<Napi::String>().Utf8Value();
+  std::string route_key = method + ":" + path;
+
+  // Check cache first
+  auto cache_it = routeCache_.find(route_key);
+  if (cache_it != routeCache_.end()) {
+    // Move to front of LRU
+    routeCache_.erase(cache_it);
+    routeCache_.push_front(route_key);
+
+    RouterMetrics::cache_hits.fetch_add(1);
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+    RouterMetrics::total_lookup_time_us.fetch_add(duration);
+    RouterMetrics::total_lookups.fetch_add(1);
+
+    return cache_it->second.Value();
+  }
+
+  RouterMetrics::cache_misses.fetch_add(1);
+
+  // Perform tree lookup
+  std::map<std::string, std::string> params;
+  RouteMatch match = LookupRoute(route_key, params);
+
+  Napi::Object result = Napi::Object::New(env);
+
+  if (match.found) {
+    result.Set("found", Napi::Boolean::New(env, true));
+    result.Set("handler", match.handler.Value());
+
+    // Add parameters
+    Napi::Object paramsObj = Napi::Object::New(env);
+    for (const auto& param : params) {
+      paramsObj.Set(param.first, Napi::String::New(env, param.second));
+    }
+    result.Set("params", paramsObj);
+  } else {
+    result.Set("found", Napi::Boolean::New(env, false));
+  }
+
+  // Cache the result
+  if (routeCache_.size() >= maxCacheSize_) {
+    // Remove LRU item
+    std::string lru_key = routeCache_.back();
+    routeCache_.pop_back();
+    routeCache_.erase(lru_key);
+  }
+
+  routeCache_.push_front(route_key);
+  routeCache_[route_key] = Napi::Persistent(result);
+
+  auto endTime = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+
+  RouterMetrics::total_lookup_time_us.fetch_add(duration);
+  RouterMetrics::total_lookups.fetch_add(1);
+
+  return result;
+}
+
+// Internal route insertion
+void RadixRouter::InsertRoute(const std::string& route, const Napi::Function& handler) {
+  RouteNode* current = root_.get();
+  size_t route_pos = 0;
+
+  while (route_pos < route.length()) {
+    bool found = false;
+
+    // Check existing children for common prefix
+    for (auto& child : current->children) {
+      size_t common = FindCommonPrefix_SIMD(
+        route.c_str() + route_pos,
+        child->prefix.c_str(),
+        std::min(route.length() - route_pos, child->prefix.length())
+      );
+
+      if (common > 0) {
+        if (common == child->prefix.length()) {
+          // Exact prefix match - continue with this child
+          current = child.get();
+          route_pos += common;
+          found = true;
+          break;
+        } else {
+          // Partial match - need to split node
+          SplitNode(child.get(), common);
+          current = child.get();
+          route_pos += common;
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      // No matching child - create new branch
+      auto new_node = std::make_unique<RouteNode>();
+      new_node->prefix = route.substr(route_pos);
+      new_node->handler = Napi::Persistent(handler);
+      new_node->is_endpoint = true;
+      current->children.push_back(std::move(new_node));
+      return;
+    }
+  }
+
+  // Route fully consumed - mark as endpoint
+  current->handler = Napi::Persistent(handler);
+  current->is_endpoint = true;
+}
+
+// Internal route lookup with SIMD optimizations
+RouteMatch RadixRouter::LookupRoute(const std::string& route,
+                                  std::map<std::string, std::string>& params) {
+  RouteNode* current = root_.get();
+  size_t route_pos = 0;
+
+  while (route_pos < route.length()) {
+    bool found = false;
+
+    for (auto& child : current->children) {
+      if (child->prefix.empty()) continue;
+
+      // Check if this child could match
+      if (child->prefix[0] == ':') {
+        // Parameter matching
+        std::string param_name = child->prefix.substr(1);
+        size_t param_end = route.find('/', route_pos);
+        if (param_end == std::string::npos) {
+          param_end = route.length();
+        }
+
+        std::string param_value = route.substr(route_pos, param_end - route_pos);
+        params[param_name] = param_value;
+
+        current = child.get();
+        route_pos = param_end;
+        found = true;
+        break;
+      } else if (child->prefix[0] == '*') {
+        // Wildcard matching
+        current = child.get();
+        route_pos = route.length(); // Consume rest of route
+        found = true;
+        break;
+      } else {
+        // Exact prefix matching with SIMD
+        size_t max_compare = std::min(route.length() - route_pos, child->prefix.length());
+
+        if (max_compare > 0 &&
+            CompareStrings_SIMD(route.c_str() + route_pos,
+                               child->prefix.c_str(), max_compare) == 0) {
+          current = child.get();
+          route_pos += max_compare;
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      return {false, Napi::FunctionReference()};
+    }
+  }
+
+  if (current->is_endpoint) {
+    return {true, current->handler};
+  }
+
+  return {false, Napi::FunctionReference()};
+}
+
+// Split node for optimization
+void RadixRouter::SplitNode(RouteNode* node, size_t split_pos) {
+  // Create new child with remaining prefix
+  auto new_child = std::make_unique<RouteNode>();
+  new_child->prefix = node->prefix.substr(split_pos);
+  new_child->handler = std::move(node->handler);
+  new_child->is_endpoint = node->is_endpoint;
+  new_child->children = std::move(node->children);
+
+  // Update current node
+  node->prefix = node->prefix.substr(0, split_pos);
+  node->is_endpoint = false;
+  node->children.clear();
+  node->children.push_back(std::move(new_child));
+}
+
+// Get performance metrics
+Napi::Value RadixRouter::GetMetrics(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  Napi::Object metrics = Napi::Object::New(env);
+  metrics.Set("totalLookups", Napi::Number::New(env, RouterMetrics::total_lookups.load()));
+  metrics.Set("simdStringMatches", Napi::Number::New(env, RouterMetrics::simd_string_matches.load()));
+  metrics.Set("totalLookupTimeUs", Napi::Number::New(env, RouterMetrics::total_lookup_time_us.load()));
+  metrics.Set("routeInsertions", Napi::Number::New(env, RouterMetrics::route_insertions.load()));
+  metrics.Set("cacheHits", Napi::Number::New(env, RouterMetrics::cache_hits.load()));
+  metrics.Set("cacheMisses", Napi::Number::New(env, RouterMetrics::cache_misses.load()));
+
+  // Calculate derived metrics
+  uint64_t lookups = RouterMetrics::total_lookups.load();
+  uint64_t timeUs = RouterMetrics::total_lookup_time_us.load();
+  uint64_t hits = RouterMetrics::cache_hits.load();
+  uint64_t misses = RouterMetrics::cache_misses.load();
+
+  if (lookups > 0) {
+    metrics.Set("avgLookupTimeUs", Napi::Number::New(env, static_cast<double>(timeUs) / lookups));
+    metrics.Set("simdUsagePercent", Napi::Number::New(env,
+      static_cast<double>(RouterMetrics::simd_string_matches.load()) / lookups * 100.0));
+  }
+
+  if (hits + misses > 0) {
+    metrics.Set("cacheHitRate", Napi::Number::New(env,
+      static_cast<double>(hits) / (hits + misses) * 100.0));
+  }
+
+  return metrics;
+}
+
+// Get SIMD capabilities
+Napi::Value RadixRouter::GetCapabilities(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  Napi::Object caps = Napi::Object::New(env);
+  caps.Set("hasSSE42", Napi::Boolean::New(env, HasSSE42()));
+  caps.Set("hasAVX2", Napi::Boolean::New(env, HasAVX2()));
+  caps.Set("supportsSIMDStringMatching", Napi::Boolean::New(env, HasAVX2()));
+  caps.Set("supportsLRUCache", Napi::Boolean::New(env, true));
+
+  return caps;
+}
+
+// Benchmark router operations
+Napi::Value RadixRouter::Benchmark(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  // Create test routes
+  std::vector<std::string> test_routes = {
+    "/api/users",
+    "/api/users/:id",
+    "/api/users/:id/posts",
+    "/api/users/:id/posts/:postId",
+    "/static/*",
+    "/health",
+    "/metrics",
+    "/api/v1/orders",
+    "/api/v1/orders/:orderId",
+    "/api/v2/products/:productId/reviews"
+  };
+
+  // Benchmark string comparison
+  const std::string test_str1 = "/api/users/123/posts/456/comments/789";
+  const std::string test_str2 = "/api/users/123/posts/456/comments/789";
+
+  const int iterations = 100000;
+
+  auto startTime = std::chrono::high_resolution_clock::now();
+
+  for (int i = 0; i < iterations; ++i) {
+    volatile int result = CompareStrings_SIMD(test_str1.c_str(), test_str2.c_str(), test_str1.length());
+    (void)result; // Prevent optimization
+  }
+
+  auto endTime = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+
+  Napi::Object results = Napi::Object::New(env);
+  results.Set("stringComparisonTimeUs", Napi::Number::New(env, static_cast<double>(duration) / iterations));
+  results.Set("usedSIMD", Napi::Boolean::New(env, HasAVX2()));
+  results.Set("testStringLength", Napi::Number::New(env, test_str1.length()));
+
+  return results;
+}
+
+// Clear cache
+Napi::Value RadixRouter::ClearCache(const Napi::CallbackInfo& info) {
+  routeCache_.clear();
+  cacheSize_ = 0;
+  return info.Env().Undefined();
 }

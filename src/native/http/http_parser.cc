@@ -5,6 +5,14 @@
 #include <string_view>
 #include <array>
 
+// Add SIMD includes
+#ifdef __x86_64__
+#include <immintrin.h>
+#include <x86intrin.h>
+#elif defined(__aarch64__)
+#include <arm_neon.h>
+#endif
+
 // Initialize static constants and helpers
 Napi::Object HttpParser::Init(Napi::Env env, Napi::Object exports) {
   Napi::HandleScope scope(env);
@@ -13,15 +21,12 @@ Napi::Object HttpParser::Init(Napi::Env env, Napi::Object exports) {
     InstanceMethod("parseRequest", &HttpParser::ParseRequest),
     InstanceMethod("parseHeaders", &HttpParser::ParseHeaders),
     InstanceMethod("parseBody", &HttpParser::ParseBody),
-    InstanceMethod("reset", &HttpParser::Reset)
+    InstanceMethod("reset", &HttpParser::Reset),
+    InstanceMethod("getPerformanceMetrics", &HttpParser::GetPerformanceMetrics),
+    InstanceMethod("resetPerformanceMetrics", &HttpParser::ResetPerformanceMetrics)
   });
 
-  Napi::FunctionReference* constructor = new Napi::FunctionReference();
-  *constructor = Napi::Persistent(func);
   exports.Set("HttpParser", func);
-
-  // Add to cleanup list
-  nexurejs::AddCleanupReference(constructor);
 
   return exports;
 }
@@ -32,9 +37,9 @@ HttpParser::HttpParser(const Napi::CallbackInfo& info)
   Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
-  // Pre-allocate vectors to reduce allocations
-  headers_.reserve(32);
-  body_.reserve(4096);
+  // Pre-allocate vectors to reduce allocations with larger capacity
+  headers_.reserve(64);  // Increased from 32
+  body_.reserve(8192);   // Increased from 4096
 
   // Initialize header names map with common headers for quick comparison
   headerNames_ = {
@@ -56,11 +61,23 @@ HttpParser::HttpParser(const Napi::CallbackInfo& info)
     {std::string(HEADER_X_REQUESTED_WITH), "X-Requested-With"},
     {std::string(HEADER_X_FORWARDED_FOR), "X-Forwarded-For"},
     {std::string(HEADER_X_FORWARDED_PROTO), "X-Forwarded-Proto"},
-    {std::string(HEADER_X_FORWARDED_HOST), "X-Forwarded-Host"}
+    {std::string(HEADER_X_FORWARDED_HOST), "X-Forwarded-Host"},
+    {std::string(HEADER_CONTENT_ENCODING), "Content-Encoding"},
+    {std::string(HEADER_TRANSFER_ENCODING), "Transfer-Encoding"},
+    {std::string(HEADER_VARY), "Vary"},
+    {std::string(HEADER_ETAG), "ETag"},
+    {std::string(HEADER_LAST_MODIFIED), "Last-Modified"},
+    {std::string(HEADER_SERVER), "Server"},
+    {std::string(HEADER_DATE), "Date"},
+    {std::string(HEADER_EXPIRES), "Expires"},
+    {std::string(HEADER_SET_COOKIE), "Set-Cookie"}
   };
 
   // Initialize lowercase map for case-insensitive comparison
   InitializeLowercaseMap();
+
+  // Pre-compile common patterns for faster matching
+  InitializeOptimizedPatterns();
 
   // Check if we are passed an object pool instance
   if (info.Length() > 0 && info[0].IsObject()) {
@@ -69,6 +86,13 @@ HttpParser::HttpParser(const Napi::CallbackInfo& info)
   } else {
     useObjectPool_ = false;
   }
+
+  // Initialize performance counters
+  parseCount_ = 0;
+  totalParseTime_ = 0;
+  headerParseTime_ = 0;
+  bodyParseTime_ = 0;
+  simdOptimizedOperations_ = 0;
 
   // Reset parser state
   Reset();
@@ -135,10 +159,247 @@ void HttpParser::Reset() {
   chunkedEncoding_ = false;
 }
 
-// Main request parsing method
+// Initialize optimized patterns for common HTTP elements
+void HttpParser::InitializeOptimizedPatterns() {
+  // Pre-compile SIMD patterns for common sequences - only for x86_64
+#ifdef __x86_64__
+  // Pattern for "\r\n\r\n" (end of headers)
+  headerEndPattern_ = _mm_set_epi8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '\n', '\r', '\n', '\r');
+
+  // Pattern for "\r\n" (line endings)
+  lineEndPattern_ = _mm_set_epi16(0, 0, 0, 0, 0, 0, 0x0A0D, 0x0A0D); // \r\n in little endian
+
+  // Pattern for ": " (header separator)
+  headerSepPattern_ = _mm_set_epi16(0, 0, 0, 0, 0, 0, 0, 0x203A); // ": " in little endian
+#endif
+
+  // Pre-calculate method lengths for faster parsing
+  methodLengths_["GET"] = 3;
+  methodLengths_["POST"] = 4;
+  methodLengths_["PUT"] = 3;
+  methodLengths_["DELETE"] = 6;
+  methodLengths_["HEAD"] = 4;
+  methodLengths_["OPTIONS"] = 7;
+  methodLengths_["PATCH"] = 5;
+  methodLengths_["TRACE"] = 5;
+  methodLengths_["CONNECT"] = 7;
+}
+
+// SIMD-optimized string searching
+size_t HttpParser::FindPatternSIMD(const char* data, size_t length, const char* pattern, size_t patternLen) {
+  // For ARM64, use simplified NEON operations for single character search only
+#ifdef __aarch64__
+  if (length >= 16 && patternLen == 1) {
+    // Single character search using NEON
+    uint8x16_t targetVec = vdupq_n_u8(pattern[0]);
+
+    for (size_t i = 0; i <= length - 16; i += 16) {
+      uint8x16_t dataVec = vld1q_u8(reinterpret_cast<const uint8_t*>(data + i));
+      uint8x16_t cmpResult = vceqq_u8(dataVec, targetVec);
+
+      // Check if any byte matches
+      uint64x2_t result64 = vreinterpretq_u64_u8(cmpResult);
+      uint64_t mask = vgetq_lane_u64(result64, 0) | vgetq_lane_u64(result64, 1);
+
+      if (mask != 0) {
+        // Find first match in the 16-byte chunk
+        for (size_t j = 0; j < 16; j++) {
+          if (data[i + j] == pattern[0]) {
+            simdOptimizedOperations_++;
+            return i + j;
+          }
+        }
+      }
+    }
+
+    // Handle remaining bytes
+    for (size_t i = (length / 16) * 16; i < length; i++) {
+      if (data[i] == pattern[0]) {
+        return i;
+      }
+    }
+    return std::string::npos;
+  }
+#elif defined(__x86_64__)
+  if (length < 16 || patternLen > 16) {
+    // Fallback to standard search for small data or long patterns
+    return FindPatternStandard(data, length, pattern, patternLen);
+  }
+
+  __m128i patternVec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(pattern));
+
+  for (size_t i = 0; i <= length - 16; i += 16) {
+    __m128i dataVec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data + i));
+    __m128i cmpResult = _mm_cmpeq_epi8(dataVec, patternVec);
+
+    int mask = _mm_movemask_epi8(cmpResult);
+    if (mask != 0) {
+      // Found potential match, verify
+      for (int j = 0; j < 16; ++j) {
+        if ((mask & (1 << j)) && i + j + patternLen <= length) {
+          if (std::memcmp(data + i + j, pattern, patternLen) == 0) {
+            simdOptimizedOperations_++;
+            return i + j;
+          }
+        }
+      }
+    }
+  }
+
+  // Check remainder
+  if (length > 16) {
+    size_t remainder = length % 16;
+    if (remainder >= patternLen) {
+      size_t pos = FindPatternStandard(data + length - remainder, remainder, pattern, patternLen);
+      if (pos != std::string::npos) {
+        return (length - remainder) + pos;
+      }
+    }
+  }
+#endif
+
+  // Fallback to standard search for all other cases or unsupported platforms
+  return FindPatternStandard(data, length, pattern, patternLen);
+}
+
+// Standard string search fallback
+size_t HttpParser::FindPatternStandard(const char* data, size_t length, const char* pattern, size_t patternLen) {
+  for (size_t i = 0; i <= length - patternLen; ++i) {
+    if (std::memcmp(data + i, pattern, patternLen) == 0) {
+      return i;
+    }
+  }
+  return std::string::npos;
+}
+
+// Optimized request line parsing with SIMD
+bool HttpParser::ParseRequestLineOptimized(Napi::Env env, Napi::Object& result) {
+  auto startTime = std::chrono::high_resolution_clock::now();
+
+  const char* data = currentBuffer_;
+  size_t remaining = bufferLength_;
+
+  // Find first space (end of method) using SIMD
+  size_t methodEnd = FindPatternSIMD(data, std::min(remaining, size_t(16)), " ", 1);
+  if (methodEnd == std::string::npos) {
+    return false;
+  }
+
+  // Extract method with zero-copy if possible
+  std::string_view method(data, methodEnd);
+
+  // Validate method using pre-calculated lengths
+  auto methodIt = methodLengths_.find(std::string(method));
+  if (methodIt == methodLengths_.end()) {
+    // Unknown method, use slower validation
+    if (!IsValidMethod(method)) {
+      return false;
+    }
+  }
+
+  result.Set("method", Napi::String::New(env, std::string(method)));
+
+  // Find second space (end of URL)
+  size_t urlStart = methodEnd + 1;
+  size_t urlEnd = FindPatternSIMD(data + urlStart, remaining - urlStart, " ", 1);
+  if (urlEnd == std::string::npos) {
+    return false;
+  }
+  urlEnd += urlStart;
+
+  // Extract URL
+  std::string_view url(data + urlStart, urlEnd - urlStart);
+  result.Set("url", Napi::String::New(env, std::string(url)));
+
+  // Find line ending
+  size_t versionStart = urlEnd + 1;
+  size_t lineEnd = FindPatternSIMD(data + versionStart, remaining - versionStart, "\r\n", 2);
+  if (lineEnd == std::string::npos) {
+    return false;
+  }
+  lineEnd += versionStart;
+
+  // Extract version
+  std::string_view version(data + versionStart, lineEnd - versionStart);
+  result.Set("version", Napi::String::New(env, std::string(version)));
+
+  bufferOffset_ = lineEnd + 2; // Skip \r\n
+
+  auto endTime = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+  totalParseTime_ += duration.count();
+
+  return true;
+}
+
+// Vectorized header parsing
+bool HttpParser::ParseHeadersOptimized(Napi::Env env, Napi::Object& headers) {
+  auto startTime = std::chrono::high_resolution_clock::now();
+
+  const char* data = currentBuffer_ + bufferOffset_;
+  size_t remaining = bufferLength_ - bufferOffset_;
+
+  // Find end of headers using SIMD
+  size_t headersEnd = FindPatternSIMD(data, remaining, "\r\n\r\n", 4);
+  if (headersEnd == std::string::npos) {
+    return false;
+  }
+
+  headerEndOffset_ = bufferOffset_ + headersEnd + 4;
+  size_t pos = 0;
+
+  // Parse headers line by line with optimizations
+  while (pos < headersEnd) {
+    // Find line end
+    size_t lineEnd = FindPatternSIMD(data + pos, headersEnd - pos, "\r\n", 2);
+    if (lineEnd == std::string::npos) {
+      break;
+    }
+    lineEnd += pos;
+
+    if (lineEnd == pos) {
+      // Empty line, end of headers
+      break;
+    }
+
+    // Find header separator
+    size_t sepPos = FindPatternSIMD(data + pos, lineEnd - pos, ": ", 2);
+    if (sepPos == std::string::npos) {
+      // Invalid header, skip
+      pos = lineEnd + 2;
+      continue;
+    }
+    sepPos += pos;
+
+    // Extract header name and value with zero-copy views
+    std::string_view headerName(data + pos, sepPos - pos);
+    std::string_view headerValue(data + sepPos + 2, lineEnd - sepPos - 2);
+
+    // Optimize common headers with pre-computed keys
+    std::string headerKey = ToLowercase(headerName);
+    auto commonIt = headerNames_.find(headerKey);
+    if (commonIt != headerNames_.end()) {
+      headers.Set(commonIt->second, Napi::String::New(env, std::string(headerValue)));
+    } else {
+      headers.Set(headerKey, Napi::String::New(env, std::string(headerValue)));
+    }
+
+    pos = lineEnd + 2; // Skip \r\n
+  }
+
+  auto endTime = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+  headerParseTime_ += duration.count();
+
+  return true;
+}
+
+// Enhanced main parsing method with performance optimizations
 Napi::Value HttpParser::ParseRequest(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
+
+  auto totalStartTime = std::chrono::high_resolution_clock::now();
 
   // Check arguments
   if (info.Length() < 1) {
@@ -165,16 +426,16 @@ Napi::Value HttpParser::ParseRequest(const Napi::CallbackInfo& info) {
   // Create the result object
   Napi::Object result = Napi::Object::New(env);
 
-  // Parse the request line
+  // Parse the request line with SIMD optimizations
   try {
-    if (!ParseRequestLine(env, result)) {
+    if (!ParseRequestLineOptimized(env, result)) {
       Napi::Error::New(env, "Failed to parse request line").ThrowAsJavaScriptException();
       return env.Undefined();
     }
 
-    // Parse the headers
+    // Parse the headers with vectorized operations
     Napi::Object headers = GetHeadersObject(env);
-    if (!ParseHeaders(env, headers)) {
+    if (!ParseHeadersOptimized(env, headers)) {
       ReleaseHeadersObject(headers);
       Napi::Error::New(env, "Failed to parse headers").ThrowAsJavaScriptException();
       return env.Undefined();
@@ -183,39 +444,42 @@ Napi::Value HttpParser::ParseRequest(const Napi::CallbackInfo& info) {
     // Add headers to result
     result.Set("headers", headers);
 
-    // Check for upgrade
+    // Check for upgrade with optimized string comparison
     if (headers.Has(std::string(HEADER_CONNECTION))) {
       std::string_view connection = GetHeaderValueView(std::string(HEADER_CONNECTION));
-      upgrade_ = (connection == "upgrade" || connection == "Upgrade");
+      upgrade_ = FastStringEqual(connection, "upgrade");
     }
     result.Set("upgrade", Napi::Boolean::New(env, upgrade_));
 
-    // Check for content-length
+    // Check for content-length with fast parsing
     if (headers.Has(std::string(HEADER_CONTENT_LENGTH))) {
       std::string_view contentLengthStr = GetHeaderValueView(std::string(HEADER_CONTENT_LENGTH));
-      contentLength_ = std::stoi(std::string(contentLengthStr));
+      contentLength_ = FastStringToInt(contentLengthStr);
     }
 
     // Check for chunked encoding
     if (headers.Has(std::string(HEADER_TRANSFER_ENCODING))) {
       std::string_view transferEncoding = GetHeaderValueView(std::string(HEADER_TRANSFER_ENCODING));
-      chunkedEncoding_ = (transferEncoding == "chunked" || transferEncoding == "Chunked");
+      chunkedEncoding_ = FastStringEqual(transferEncoding, "chunked");
     }
+    result.Set("chunked", Napi::Boolean::New(env, chunkedEncoding_));
 
-    // Set body to null for now - client code will call parseBody if needed
-    result.Set("body", env.Null());
-    result.Set("complete", Napi::Boolean::New(env, isComplete_));
+    // Set body offset for potential body parsing
+    bodyOffset_ = headerEndOffset_;
+    result.Set("bodyOffset", Napi::Number::New(env, bodyOffset_));
 
-    // Set raw buffer information for zero-copy access from JS
-    if (headerEndOffset_ > 0) {
-      Napi::Object rawInfo = Napi::Object::New(env);
-      rawInfo.Set("buffer", buffer);
-      rawInfo.Set("headerEnd", Napi::Number::New(env, headerEndOffset_));
-      rawInfo.Set("bodyStart", Napi::Number::New(env, bodyOffset_));
-      result.Set("_rawBufferInfo", rawInfo);
-    }
+    // Calculate and store performance metrics
+    auto totalEndTime = std::chrono::high_resolution_clock::now();
+    auto totalDuration = std::chrono::duration_cast<std::chrono::microseconds>(totalEndTime - totalStartTime);
+
+    parseCount_++;
+    totalParseTime_ += totalDuration.count();
+
+    result.Set("parseTime", Napi::Number::New(env, totalDuration.count()));
+    result.Set("simdOptimized", Napi::Number::New(env, simdOptimizedOperations_));
 
     return result;
+
   } catch (const std::exception& e) {
     Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
     return env.Undefined();
@@ -300,127 +564,6 @@ Napi::Value HttpParser::Reset(const Napi::CallbackInfo& info) {
   Reset();
 
   return env.Undefined();
-}
-
-// Parse the request line with zero-copy approach
-bool HttpParser::ParseRequestLine(Napi::Env env, Napi::Object result) {
-  // Find the end of the request line
-  const char* endOfLine = FindSubstring(currentBuffer_ + bufferOffset_,
-                                     bufferLength_ - bufferOffset_,
-                                     CRLF.data(), CRLF.length());
-  if (!endOfLine) {
-    return false;
-  }
-
-  size_t lineLength = endOfLine - (currentBuffer_ + bufferOffset_);
-
-  // Find the method portion
-  const char* methodEnd = FindSubstring(currentBuffer_ + bufferOffset_, lineLength, SPACE.data(), SPACE.length());
-
-  if (!methodEnd) {
-    return false;
-  }
-
-  // Create string view for method
-  std::string_view methodView(currentBuffer_ + bufferOffset_, methodEnd - (currentBuffer_ + bufferOffset_));
-
-  // Set method in result object
-  result.Set("method", Napi::String::New(env, std::string(methodView)));
-
-  // Skip the space
-  size_t urlOffset = (methodEnd - currentBuffer_) + 1;
-
-  // Find the URL portion
-  const char* urlEnd = FindSubstring(currentBuffer_ + urlOffset, lineLength - (urlOffset - bufferOffset_), SPACE.data(), SPACE.length());
-
-  if (!urlEnd) {
-    return false;
-  }
-
-  // Create string view for URL
-  std::string_view urlView(currentBuffer_ + urlOffset, urlEnd - (currentBuffer_ + urlOffset));
-
-  // Set URL in result object
-  result.Set("url", Napi::String::New(env, std::string(urlView)));
-
-  // Skip the space
-  size_t versionOffset = (urlEnd - currentBuffer_) + 1;
-
-  // Create string view for version
-  std::string_view versionView(currentBuffer_ + versionOffset, endOfLine - (currentBuffer_ + versionOffset));
-
-  // Parse version (HTTP/1.1)
-  size_t slashPos = versionView.find('/');
-  if (slashPos != std::string::npos) {
-    size_t dotPos = versionView.find('.', slashPos);
-    if (dotPos != std::string::npos) {
-      int versionMajor = std::stoi(std::string(versionView.substr(slashPos + 1, dotPos - slashPos - 1)));
-      int versionMinor = std::stoi(std::string(versionView.substr(dotPos + 1)));
-
-      // Set version in result object
-      result.Set("versionMajor", Napi::Number::New(env, versionMajor));
-      result.Set("versionMinor", Napi::Number::New(env, versionMinor));
-    }
-  }
-
-  // Update offset to after CRLF
-  bufferOffset_ = (endOfLine - currentBuffer_) + 2;
-
-  return true;
-}
-
-// Parse HTTP headers with zero-copy approach and optimized normalization
-bool HttpParser::ParseHeaders(Napi::Env env, Napi::Object headers) {
-  // Find the end of headers (double CRLF)
-  const char* endOfHeaders = FindSubstring(currentBuffer_ + bufferOffset_, bufferLength_ - bufferOffset_, DOUBLE_CRLF.data(), DOUBLE_CRLF.length());
-  if (!endOfHeaders) {
-    return false;
-  }
-
-  // Calculate the length of the headers section
-  size_t headersLength = endOfHeaders - (currentBuffer_ + bufferOffset_);
-  headerEndOffset_ = bufferOffset_ + headersLength + 4; // +4 for the \r\n\r\n
-
-  // Parse each header line
-  size_t lineStart = bufferOffset_;
-  while (lineStart < headerEndOffset_ - 4) {
-    const char* endOfLine = FindSubstring(currentBuffer_ + lineStart,
-                                       headerEndOffset_ - lineStart,
-                                       CRLF.data(), CRLF.length());
-    if (!endOfLine) {
-      break;
-    }
-
-    size_t lineLength = endOfLine - (currentBuffer_ + lineStart);
-    const char* colonPos = FindSubstring(currentBuffer_ + lineStart,
-                                      lineLength,
-                                      COLON_SPACE.data(), COLON_SPACE.length());
-    if (!colonPos) {
-      lineStart = (endOfLine - currentBuffer_) + 2;
-      continue;
-    }
-
-    // Create string views for name and value
-    std::string_view nameView(currentBuffer_ + lineStart, colonPos - (currentBuffer_ + lineStart));
-    std::string_view valueView(colonPos + 2, endOfLine - (colonPos + 2));
-
-    // Convert header name to lowercase for consistent lookup
-    std::string headerName = ToLowercase(nameView);
-
-    // Store header in object
-    headers.Set(headerName, Napi::String::New(env, std::string(valueView)));
-
-    // Store in our map for later lookup
-    headers_[headerName] = std::string(valueView);
-
-    lineStart = (endOfLine - currentBuffer_) + 2;
-  }
-
-  // Update offset to after headers
-  bufferOffset_ = headerEndOffset_;
-  bodyOffset_ = headerEndOffset_;
-
-  return true;
 }
 
 // Helper method to get a buffer from the object pool
@@ -573,4 +716,129 @@ std::string_view HttpParser::GetHeaderValueView(const std::string& name) const {
     return it->second;
   }
   return std::string_view();
+}
+
+// Fast string comparison optimized for common cases
+bool HttpParser::FastStringEqual(std::string_view a, const char* b) {
+  size_t bLen = strlen(b);
+  if (a.length() != bLen) {
+    return false;
+  }
+
+  // Use SIMD for longer strings
+#ifdef __x86_64__
+  if (a.length() >= 16) {
+    return SIMDStringEqual(a.data(), b, a.length());
+  }
+#endif
+
+  // Unrolled comparison for short strings
+  switch (a.length()) {
+    case 0: return true;
+    case 1: return a[0] == b[0];
+    case 2: return a[0] == b[0] && a[1] == b[1];
+    case 3: return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+    case 4: return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+    default:
+      return std::memcmp(a.data(), b, a.length()) == 0;
+  }
+}
+
+#ifdef __x86_64__
+bool HttpParser::SIMDStringEqual(const char* a, const char* b, size_t length) {
+  size_t vectorCount = length / 16;
+
+  for (size_t i = 0; i < vectorCount; ++i) {
+    __m128i vecA = _mm_loadu_si128(reinterpret_cast<const __m128i*>(a + i * 16));
+    __m128i vecB = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b + i * 16));
+    __m128i cmp = _mm_cmpeq_epi8(vecA, vecB);
+
+    if (_mm_movemask_epi8(cmp) != 0xFFFF) {
+      return false;
+    }
+  }
+
+  // Handle remainder
+  size_t remainder = length % 16;
+  if (remainder > 0) {
+    return std::memcmp(a + length - remainder, b + length - remainder, remainder) == 0;
+  }
+
+  simdOptimizedOperations_++;
+  return true;
+}
+#endif
+
+// Fast string to integer conversion
+int64_t HttpParser::FastStringToInt(std::string_view str) {
+  if (str.empty()) return 0;
+
+  int64_t result = 0;
+  size_t i = 0;
+  bool negative = false;
+
+  if (str[0] == '-') {
+    negative = true;
+    i = 1;
+  }
+
+  // Unrolled parsing for common cases
+  for (; i < str.length() && i < 10; ++i) {
+    char c = str[i];
+    if (c < '0' || c > '9') break;
+    result = result * 10 + (c - '0');
+  }
+
+  return negative ? -result : result;
+}
+
+// Method validation with optimized lookup
+bool HttpParser::IsValidMethod(std::string_view method) {
+  // Quick check for common methods
+  switch (method.length()) {
+    case 3:
+      return method == "GET" || method == "PUT";
+    case 4:
+      return method == "POST" || method == "HEAD";
+    case 5:
+      return method == "PATCH" || method == "TRACE";
+    case 6:
+      return method == "DELETE";
+    case 7:
+      return method == "OPTIONS" || method == "CONNECT";
+    default:
+      return false;
+  }
+}
+
+// Performance metrics getter
+Napi::Value HttpParser::GetPerformanceMetrics(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  Napi::Object metrics = Napi::Object::New(env);
+
+  metrics.Set("parseCount", Napi::Number::New(env, parseCount_));
+  metrics.Set("totalParseTime", Napi::Number::New(env, totalParseTime_));
+  metrics.Set("headerParseTime", Napi::Number::New(env, headerParseTime_));
+  metrics.Set("bodyParseTime", Napi::Number::New(env, bodyParseTime_));
+  metrics.Set("simdOptimizedOperations", Napi::Number::New(env, simdOptimizedOperations_));
+
+  if (parseCount_ > 0) {
+    metrics.Set("avgParseTime", Napi::Number::New(env, totalParseTime_ / parseCount_));
+    metrics.Set("avgHeaderParseTime", Napi::Number::New(env, headerParseTime_ / parseCount_));
+  }
+
+  return metrics;
+}
+
+// Reset performance metrics
+Napi::Value HttpParser::ResetPerformanceMetrics(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  parseCount_ = 0;
+  totalParseTime_ = 0;
+  headerParseTime_ = 0;
+  bodyParseTime_ = 0;
+  simdOptimizedOperations_ = 0;
+
+  return env.Undefined();
 }

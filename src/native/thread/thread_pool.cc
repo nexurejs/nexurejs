@@ -1140,9 +1140,12 @@ Napi::Value ThreadPool::SubmitWithPriority(const Napi::CallbackInfo& info) {
     metrics_.submittedTasks++;
     metrics_.totalQueuedTasks++;
 
-    std::stringstream ss;
-    ss << "Task #" << taskId << " queued with " << priorityStr << " priority (queue size: " << tasks_.size() << ")";
-    logInfo(ss.str());
+    // Only log every 1000th task to prevent spam
+    if (taskId % 1000 == 0) {
+      std::stringstream ss;
+      ss << "Task #" << taskId << " queued with " << priorityStr << " priority (queue size: " << tasks_.size() << ")";
+      logInfo(ss.str());
+    }
   }
 
   // Notify a worker thread

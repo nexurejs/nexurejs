@@ -116,12 +116,12 @@ RateLimiter::RateLimiter(const Napi::CallbackInfo& info)
       interval_(1000.0),
       burstSize_(1000.0),
       precision_(0.001),
-      defaultBucket_(100.0, 1000.0, 1000.0),
       totalRequests_(0),
       allowedRequests_(0),
       throttledRequests_(0),
       totalWaitTime_(0),
-      maxBurstUsed_(0) {
+      maxBurstUsed_(0),
+      defaultBucket_(100.0, 1000.0, 1000.0) {
 
     if (info.Length() > 0 && info[0].IsObject()) {
         Napi::Object options = info[0].As<Napi::Object>();

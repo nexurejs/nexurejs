@@ -10,6 +10,292 @@
 #include <limits>
 #include <simdjson.h>
 
+// SIMD intrinsics for optimization
+#ifdef __x86_64__
+#include <immintrin.h>
+#include <nmmintrin.h>
+#endif
+
+// SIMD-optimized JSON validation and preprocessing utilities
+namespace JsonSIMD {
+
+// Check if AVX2 is available
+static bool HasAVX2() {
+#ifdef __x86_64__
+  static int avx2_supported = -1;
+  if (avx2_supported == -1) {
+    int cpuInfo[4];
+    __cpuid_count(7, 0, cpuInfo[0], cpuInfo[1], cpuInfo[2], cpuInfo[3]);
+    avx2_supported = (cpuInfo[1] & (1 << 5)) ? 1 : 0;
+  }
+  return avx2_supported == 1;
+#else
+  return false;
+#endif
+}
+
+// SIMD-optimized JSON character validation
+bool ValidateJsonChars_SIMD(const char* json, size_t length) {
+#ifdef __x86_64__
+  if (!HasAVX2() || length < 32) {
+    // Fallback to scalar validation
+    for (size_t i = 0; i < length; ++i) {
+      char c = json[i];
+      if (c < 0x20 && c != '\t' && c != '\n' && c != '\r') {
+        return false; // Invalid control character
+      }
+    }
+    return true;
+  }
+
+  const size_t simd_width = 32;
+  const size_t simd_iterations = length / simd_width;
+
+  // Control character mask (valid: tab, newline, carriage return, and >= 0x20)
+  __m256i tab_mask = _mm256_set1_epi8('\t');
+  __m256i newline_mask = _mm256_set1_epi8('\n');
+  __m256i cr_mask = _mm256_set1_epi8('\r');
+  __m256i min_valid = _mm256_set1_epi8(0x20);
+
+  for (size_t i = 0; i < simd_iterations; ++i) {
+    __m256i chars = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(json + i * simd_width));
+
+    // Check for valid characters: >= 0x20 OR tab OR newline OR carriage return
+    __m256i ge_min = _mm256_cmpgt_epi8(chars, _mm256_sub_epi8(min_valid, _mm256_set1_epi8(1)));
+    __m256i is_tab = _mm256_cmpeq_epi8(chars, tab_mask);
+    __m256i is_newline = _mm256_cmpeq_epi8(chars, newline_mask);
+    __m256i is_cr = _mm256_cmpeq_epi8(chars, cr_mask);
+
+    __m256i valid = _mm256_or_si256(_mm256_or_si256(ge_min, is_tab),
+                                   _mm256_or_si256(is_newline, is_cr));
+
+    int mask = _mm256_movemask_epi8(valid);
+    if (mask != -1) { // Not all characters are valid
+      return false;
+    }
+  }
+
+  // Check remaining characters
+  for (size_t i = simd_iterations * simd_width; i < length; ++i) {
+    char c = json[i];
+    if (c < 0x20 && c != '\t' && c != '\n' && c != '\r') {
+      return false;
+    }
+  }
+
+  return true;
+#else
+  // Scalar fallback
+  for (size_t i = 0; i < length; ++i) {
+    char c = json[i];
+    if (c < 0x20 && c != '\t' && c != '\n' && c != '\r') {
+      return false;
+    }
+  }
+  return true;
+#endif
+}
+
+// SIMD-optimized whitespace trimming
+size_t TrimWhitespace_SIMD(const char* json, size_t length, size_t& start) {
+#ifdef __x86_64__
+  if (!HasAVX2() || length < 32) {
+    // Scalar fallback
+    start = 0;
+    while (start < length && (json[start] == ' ' || json[start] == '\t' ||
+                              json[start] == '\n' || json[start] == '\r')) {
+      ++start;
+    }
+
+    size_t end = length;
+    while (end > start && (json[end-1] == ' ' || json[end-1] == '\t' ||
+                           json[end-1] == '\n' || json[end-1] == '\r')) {
+      --end;
+    }
+
+    return end - start;
+  }
+
+  // Find start using SIMD
+  start = 0;
+  __m256i space_mask = _mm256_set1_epi8(' ');
+  __m256i tab_mask = _mm256_set1_epi8('\t');
+  __m256i newline_mask = _mm256_set1_epi8('\n');
+  __m256i cr_mask = _mm256_set1_epi8('\r');
+
+  // Process 32 bytes at a time from the beginning
+  for (size_t i = 0; i + 32 <= length; i += 32) {
+    __m256i chars = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(json + i));
+
+    __m256i is_space = _mm256_cmpeq_epi8(chars, space_mask);
+    __m256i is_tab = _mm256_cmpeq_epi8(chars, tab_mask);
+    __m256i is_newline = _mm256_cmpeq_epi8(chars, newline_mask);
+    __m256i is_cr = _mm256_cmpeq_epi8(chars, cr_mask);
+
+    __m256i is_whitespace = _mm256_or_si256(_mm256_or_si256(is_space, is_tab),
+                                           _mm256_or_si256(is_newline, is_cr));
+
+    int mask = _mm256_movemask_epi8(is_whitespace);
+    if (mask != -1) { // Found non-whitespace
+      // Find first non-whitespace byte
+      for (int j = 0; j < 32; ++j) {
+        if (!(mask & (1 << j))) {
+          start = i + j;
+          break;
+        }
+      }
+      break;
+    }
+
+    if (i + 32 >= length) {
+      start = length; // All whitespace
+    }
+  }
+
+  // Handle remaining bytes at start
+  if (start == 0) {
+    while (start < length && (json[start] == ' ' || json[start] == '\t' ||
+                              json[start] == '\n' || json[start] == '\r')) {
+      ++start;
+    }
+  }
+
+  // Find end using SIMD (working backwards is complex, use scalar)
+  size_t end = length;
+  while (end > start && (json[end-1] == ' ' || json[end-1] == '\t' ||
+                         json[end-1] == '\n' || json[end-1] == '\r')) {
+    --end;
+  }
+
+  return end - start;
+#else
+  // Scalar fallback
+  start = 0;
+  while (start < length && (json[start] == ' ' || json[start] == '\t' ||
+                            json[start] == '\n' || json[start] == '\r')) {
+    ++start;
+  }
+
+  size_t end = length;
+  while (end > start && (json[end-1] == ' ' || json[end-1] == '\t' ||
+                         json[end-1] == '\n' || json[end-1] == '\r')) {
+    --end;
+  }
+
+  return end - start;
+#endif
+}
+
+// SIMD-optimized string escaping detection
+bool HasEscapeChars_SIMD(const char* str, size_t length) {
+#ifdef __x86_64__
+  if (!HasAVX2() || length < 32) {
+    // Scalar fallback
+    for (size_t i = 0; i < length; ++i) {
+      if (str[i] == '\\' || str[i] == '"' || str[i] < 0x20) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const size_t simd_width = 32;
+  const size_t simd_iterations = length / simd_width;
+
+  __m256i backslash_mask = _mm256_set1_epi8('\\');
+  __m256i quote_mask = _mm256_set1_epi8('"');
+  __m256i control_threshold = _mm256_set1_epi8(0x20);
+
+  for (size_t i = 0; i < simd_iterations; ++i) {
+    __m256i chars = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(str + i * simd_width));
+
+    __m256i is_backslash = _mm256_cmpeq_epi8(chars, backslash_mask);
+    __m256i is_quote = _mm256_cmpeq_epi8(chars, quote_mask);
+    __m256i is_control = _mm256_cmpgt_epi8(control_threshold, chars);
+
+    __m256i needs_escape = _mm256_or_si256(_mm256_or_si256(is_backslash, is_quote), is_control);
+
+    int mask = _mm256_movemask_epi8(needs_escape);
+    if (mask != 0) {
+      return true;
+    }
+  }
+
+  // Check remaining characters
+  for (size_t i = simd_iterations * simd_width; i < length; ++i) {
+    if (str[i] == '\\' || str[i] == '"' || str[i] < 0x20) {
+      return true;
+    }
+  }
+
+  return false;
+#else
+  // Scalar fallback
+  for (size_t i = 0; i < length; ++i) {
+    if (str[i] == '\\' || str[i] == '"' || str[i] < 0x20) {
+      return true;
+    }
+  }
+  return false;
+#endif
+}
+
+// Fast integer parsing with SIMD validation
+bool ParseIntegerSIMD(const char* str, size_t length, int64_t& result) {
+  if (length == 0 || length > 19) return false; // int64 max digits
+
+  // Quick validation that all chars are digits (except first might be minus)
+  size_t start = 0;
+  bool negative = false;
+
+  if (str[0] == '-') {
+    negative = true;
+    start = 1;
+    if (length == 1) return false;
+  }
+
+#ifdef __x86_64__
+  if (HasAVX2() && length - start >= 16) {
+    // Validate digits using SIMD
+    __m256i char_data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(str + start));
+    __m256i zero_mask = _mm256_set1_epi8('0');
+    __m256i nine_mask = _mm256_set1_epi8('9');
+
+    __m256i ge_zero = _mm256_cmpgt_epi8(char_data, _mm256_sub_epi8(zero_mask, _mm256_set1_epi8(1)));
+    __m256i le_nine = _mm256_cmpgt_epi8(_mm256_add_epi8(nine_mask, _mm256_set1_epi8(1)), char_data);
+    __m256i is_digit = _mm256_and_si256(ge_zero, le_nine);
+
+    int mask = _mm256_movemask_epi8(is_digit);
+    // Check only the relevant bytes
+    int relevant_mask = (1 << (length - start)) - 1;
+    if ((mask & relevant_mask) != relevant_mask) {
+      return false; // Not all characters are digits
+    }
+  }
+#endif
+
+  // Parse the integer
+  result = 0;
+  for (size_t i = start; i < length; ++i) {
+    char c = str[i];
+    if (c < '0' || c > '9') return false;
+
+    int64_t digit = c - '0';
+    if (result > (INT64_MAX - digit) / 10) {
+      return false; // Overflow
+    }
+    result = result * 10 + digit;
+  }
+
+  if (negative) {
+    result = -result;
+  }
+
+  return true;
+}
+
+} // namespace JsonSIMD
+
 // Initialize the JSON processor class
 Napi::Object JsonProcessor::Init(Napi::Env env, Napi::Object exports) {
   // Define the JsonProcessor class
@@ -30,9 +316,6 @@ Napi::Object JsonProcessor::Init(Napi::Env env, Napi::Object exports) {
   Napi::FunctionReference* constructor = new Napi::FunctionReference();
   *constructor = Napi::Persistent(func);
   env.SetInstanceData(constructor);
-
-  // Add to cleanup list
-  nexurejs::AddCleanupReference(constructor);
 
   // Set export
   exports.Set("JsonProcessor", func);
@@ -193,11 +476,36 @@ Napi::Value JsonProcessor::Parse(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
+  // SIMD-optimized preprocessing
+  size_t trimStart = 0;
+  size_t actualLength = JsonSIMD::TrimWhitespace_SIMD(json.c_str(), json.length(), trimStart);
+
+  if (actualLength == 0) {
+    return env.Null();
+  }
+
   // Fast path for small documents
-  if (json.length() < 10) {
-    if (json == "null") return env.Null();
-    if (json == "true") return Napi::Boolean::New(env, true);
-    if (json == "false") return Napi::Boolean::New(env, false);
+  if (actualLength < 10) {
+    const char* trimmedJson = json.c_str() + trimStart;
+    if (actualLength == 4 && std::memcmp(trimmedJson, "null", 4) == 0) return env.Null();
+    if (actualLength == 4 && std::memcmp(trimmedJson, "true", 4) == 0) return Napi::Boolean::New(env, true);
+    if (actualLength == 5 && std::memcmp(trimmedJson, "false", 5) == 0) return Napi::Boolean::New(env, false);
+
+    // Try fast integer parsing
+    int64_t intValue;
+    if (JsonSIMD::ParseIntegerSIMD(trimmedJson, actualLength, intValue)) {
+      return Napi::Number::New(env, static_cast<double>(intValue));
+    }
+  }
+
+  // SIMD character validation before expensive parsing
+  if (!JsonSIMD::ValidateJsonChars_SIMD(json.c_str() + trimStart, actualLength)) {
+    Napi::SyntaxError::New(env, "Invalid JSON characters detected").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  // Fast path for small documents with basic validation
+  if (actualLength < 10) {
     // Try to parse as number
     try {
       double num = std::stod(json);

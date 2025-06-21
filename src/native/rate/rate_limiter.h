@@ -25,6 +25,7 @@ public:
     static Napi::Object Init(Napi::Env env, Napi::Object exports);
     static Napi::Value GetInstance(const Napi::CallbackInfo& info);
     static Napi::Value ResetMetricsStatic(const Napi::CallbackInfo& info);
+    static Napi::FunctionReference constructor;
 
     RateLimiter(const Napi::CallbackInfo& info);
     ~RateLimiter();

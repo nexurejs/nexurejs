@@ -16,8 +16,7 @@
 
 namespace nexurejs {
 
-// Forward declaration for the function that might not be visible yet
-void RegisterComponent(const std::string& name, std::function<void()> cleanup);
+
 
 // Initialize static constructor reference
 Napi::FunctionReference StringEncoder::constructor;
@@ -47,11 +46,6 @@ Napi::Object StringEncoder::Init(Napi::Env env, Napi::Object exports) {
     constructor.SuppressDestruct();
 
     exports.Set("StringEncoder", func);
-
-    // Register for cleanup with a lambda that does nothing specific
-    RegisterComponent("StringEncoder", []() {
-        // No specific cleanup needed for StringEncoder
-    });
 
     return exports;
 }

@@ -2,64 +2,113 @@
 #define RADIX_ROUTER_H
 
 #include <napi.h>
-#include <string>
 #include <vector>
-#include <unordered_map>
+#include <string>
 #include <memory>
+#include <unordered_map>
+#include <list>
+#include <atomic>
+#include <map>
 
-// Node in the radix tree
-class RadixNode {
-public:
-  RadixNode();
-  ~RadixNode();
+// Route node structure for radix tree
+struct RouteNode {
+  std::string prefix;
+  bool is_endpoint = false;
+  Napi::FunctionReference handler;
+  std::vector<std::unique_ptr<RouteNode>> children;
 
-  // Node properties
-  std::string path;
-  std::unordered_map<std::string, Napi::ObjectReference> handlers;
-  std::unordered_map<char, std::unique_ptr<RadixNode>> children;
-  std::unique_ptr<RadixNode> paramChild;
-  std::unique_ptr<RadixNode> wildcardChild;
-  std::string paramName;
-  bool isWildcard;
-  bool hasHandler;
+  RouteNode() = default;
+  ~RouteNode() = default;
 
-  // Bitmap for fast child lookup (ASCII)
-  uint64_t staticChildrenBitmap[4] = {0}; // 256 bits total
+  // Move constructor and assignment
+  RouteNode(RouteNode&& other) noexcept
+    : prefix(std::move(other.prefix))
+    , is_endpoint(other.is_endpoint)
+    , handler(std::move(other.handler))
+    , children(std::move(other.children)) {}
 
-  // Set bit in bitmap for a character
-  void setBit(char c);
+  RouteNode& operator=(RouteNode&& other) noexcept {
+    if (this != &other) {
+      prefix = std::move(other.prefix);
+      is_endpoint = other.is_endpoint;
+      handler = std::move(other.handler);
+      children = std::move(other.children);
+    }
+    return *this;
+  }
 
-  // Check if bit is set for a character
-  bool hasBit(char c) const;
+  // Disable copy constructor and assignment
+  RouteNode(const RouteNode&) = delete;
+  RouteNode& operator=(const RouteNode&) = delete;
+};
+
+// Route matching result
+struct RouteMatch {
+  bool found;
+  Napi::FunctionReference handler;
+};
+
+// Cache entry structure
+struct CacheEntry {
+  Napi::ObjectReference result;
+  std::list<std::string>::iterator lru_iterator;
 };
 
 class RadixRouter : public Napi::ObjectWrap<RadixRouter> {
 public:
+  // Initialization and constructor
   static Napi::Object Init(Napi::Env env, Napi::Object exports);
-  static Napi::Object NewInstance(Napi::Env env);
+  static Napi::FunctionReference constructor;
+
   RadixRouter(const Napi::CallbackInfo& info);
   ~RadixRouter();
 
-private:
-  // JavaScript accessible methods
+  // Public API methods
   Napi::Value Add(const Napi::CallbackInfo& info);
   Napi::Value Find(const Napi::CallbackInfo& info);
   Napi::Value Remove(const Napi::CallbackInfo& info);
+  Napi::Value Insert(const Napi::CallbackInfo& info);
+  Napi::Value Lookup(const Napi::CallbackInfo& info);
+  Napi::Value ClearCache(const Napi::CallbackInfo& info);
+  Napi::Value GetMetrics(const Napi::CallbackInfo& info);
 
-  // Internal methods
-  void Insert(const std::string& method, const std::string& path, const Napi::Object& handler);
-  Napi::Value Lookup(const std::string& method, const std::string& path);
+  // Static methods
+  static Napi::Value GetCapabilities(const Napi::CallbackInfo& info);
+  static Napi::Value Benchmark(const Napi::CallbackInfo& info);
 
-  // Root node of the radix tree
-  std::unique_ptr<RadixNode> root_;
+private:
+  // SIMD capability detection
+  static bool HasAVX2();
+  static bool HasSSE42();
 
-  // Cache for route lookups
-  std::unordered_map<std::string, Napi::ObjectReference> routeCache_;
-  size_t cacheSize_;
-  size_t maxCacheSize_;
+  // SIMD optimization methods
+  static int CompareStrings_SIMD(const char* str1, const char* str2, size_t length);
+  static size_t FindCommonPrefix_SIMD(const char* str1, const char* str2, size_t max_length);
+  static bool MatchPattern_SIMD(const std::string& pattern, const std::string& path);
+  static bool MatchPatternScalar(const std::string& pattern, const std::string& path);
 
-  // Reference to the Napi environment
-  Napi::Env env_;
+  // Internal routing methods
+  void InsertRoute(const std::string& route, const Napi::Function& handler);
+  RouteMatch LookupRoute(const std::string& route, std::map<std::string, std::string>& params);
+  void SplitNode(RouteNode* node, size_t split_pos);
+
+  // Legacy methods for backward compatibility
+  void AddRoute(const std::string& path, const Napi::Function& handler);
+  Napi::Value FindRoute(const std::string& path, std::map<std::string, std::string>& params);
+  bool RemoveRoute(const std::string& path);
+
+  // Member variables
+  std::unique_ptr<RouteNode> root_;
+
+  // LRU cache for route lookups
+  std::unordered_map<std::string, CacheEntry> cache_;
+  std::list<std::string> cache_order_;
+  size_t cache_capacity_;
+
+  // Legacy cache (for backward compatibility)
+  std::unordered_map<std::string, Napi::FunctionReference> routeCache_;
+  size_t cacheSize_ = 0;
+  size_t maxCacheSize_ = 1000;
 };
 
 #endif // RADIX_ROUTER_H

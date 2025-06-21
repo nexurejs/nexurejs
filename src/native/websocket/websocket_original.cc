@@ -941,7 +941,7 @@ Napi::Object WebSocketServer::Init(Napi::Env env, Napi::Object exports) {
         env.SetInstanceData(constructor);
 
         // Add to cleanup list with proper null check
-        nexurejs::AddCleanupReference(constructor);
+        // Removed undefined AddCleanupReference call
 
         // Set export
         exports.Set("WebSocketServer", func);

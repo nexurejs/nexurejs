@@ -6,6 +6,15 @@
 #include <mutex>
 #include <atomic>
 #include <chrono>
+#include <cstring>
+#include <random>
+#include <algorithm>
+
+// SIMD intrinsics for optimization
+#ifdef __x86_64__
+#include <immintrin.h>
+#include <nmmintrin.h>
+#endif
 
 namespace nexurejs {
 
