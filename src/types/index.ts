@@ -9,6 +9,7 @@ import { parseBody as parseBodyImpl } from '../http/body-parser.js';
 import { composeMiddleware as composeMiddlewareImpl } from '../middleware/middleware.js';
 import { getRouteMetadata as getRouteMetadataImpl } from '../decorators/route-decorators.js';
 import { Logger as FrameworkLogger } from '../utils/logger.js';
+import { HttpMethod } from '../http/http-method.js';
 
 /**
  * Types module
@@ -152,16 +153,7 @@ export class HttpException extends Error {
 /**
  * HTTP methods enum
  */
-export enum HttpMethod {
-  GET = 'GET',
-  POST = 'POST',
-  PUT = 'PUT',
-  DELETE = 'DELETE',
-  PATCH = 'PATCH',
-  HEAD = 'HEAD',
-  OPTIONS = 'OPTIONS',
-  ALL = '*'
-}
+export { HttpMethod };
 
 export const HTTP_CONSTANTS = {
   CRLF: Buffer.from('\r\n'),

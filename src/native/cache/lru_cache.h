@@ -33,7 +33,7 @@ private:
   // Type definitions for cache implementation
   struct CacheEntry {
     std::string key;
-    Napi::ObjectReference value;
+    Napi::Reference<Napi::Value> value;
     int64_t expiry;  // Timestamp for TTL (0 = no expiry)
   };
 
