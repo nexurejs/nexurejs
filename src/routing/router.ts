@@ -13,21 +13,10 @@ import { IncomingMessage, ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import { MiddlewareHandler, getRouteMetadata, composeMiddleware, parseBody } from '../types/index.js';
 import { Container } from '../di/container.js';
+import { HttpMethod } from '../http/http-method.js';
 
-/**
- * HTTP method types for routing
- */
-export type HttpMethod =
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'DELETE'
-  | 'PATCH'
-  | 'HEAD'
-  | 'OPTIONS'
-  | 'CONNECT'
-  | 'TRACE'
-  | '*';
+// Re-export for compatibility with previous imports from this module
+export { HttpMethod } from '../http/http-method.js';
 
 // Constants
 export const STATIC = 0;

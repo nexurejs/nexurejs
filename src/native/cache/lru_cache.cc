@@ -180,7 +180,7 @@ Napi::Value LRUCache::Set(const Napi::CallbackInfo& info) {
     // Update existing entry
     CacheEntry& entry = *(it->second);
     // Store a new reference and release the old one
-    entry.value.Reset(value.IsObject() ? value.As<Napi::Object>() : Napi::Object::New(env));
+    entry.value.Reset(value);
     entry.expiry = expiry;
 
     // Move to front of list
@@ -190,7 +190,7 @@ Napi::Value LRUCache::Set(const Napi::CallbackInfo& info) {
     // Create new entry
     CacheEntry newEntry;
     newEntry.key = key;
-    newEntry.value = Napi::Persistent(value.IsObject() ? value.As<Napi::Object>() : Napi::Object::New(env));
+    newEntry.value = Napi::Persistent(value);
     newEntry.expiry = expiry;
 
     // Add to front of list
