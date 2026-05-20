@@ -45,10 +45,12 @@ jobs:
       id-token: write   # npm publish provenance
     steps:
       - uses: actions/checkout@v4
+      # No `registry-url`: it makes setup-node write an .npmrc with a
+      # placeholder auth token, which npm then uses instead of falling through
+      # to OIDC trusted publishing. The default registry is npmjs.org anyway.
       - uses: actions/setup-node@v4
         with:
           node-version: 20.x
-          registry-url: 'https://registry.npmjs.org'
           cache: npm
 
       - name: Install dependencies
