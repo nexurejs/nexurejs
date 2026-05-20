@@ -1,10 +1,10 @@
-import { describe, test, expect, jest } from '@jest/globals';
+import { describe, test, expect, vi } from 'vitest';
 import { Router, HttpMethod } from '../../../src/routing/router.js';
 
 describe('Router ALL method', () => {
   test('registers handler for all HTTP methods', () => {
     const router = new Router();
-    const handler = jest.fn(async () => 'ok');
+    const handler = vi.fn(async () => {});
 
     router.all('/test', handler);
 
