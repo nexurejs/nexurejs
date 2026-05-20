@@ -50,7 +50,7 @@ jobs:
       # to OIDC trusted publishing. The default registry is npmjs.org anyway.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: npm
 
       - name: Install dependencies
@@ -58,6 +58,12 @@ jobs:
 
       - name: Upgrade npm (trusted publishing requires npm >= 11.5.1)
         run: npm install --global npm@latest
+
+      - name: Show toolchain / OIDC diagnostics
+        run: |
+          echo "node: $(node --version)"
+          echo "npm:  $(npm --version)"
+          echo "OIDC request URL present: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
 
       - name: Build distributable
         run: npm run build:dist
