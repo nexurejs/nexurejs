@@ -16,13 +16,17 @@ workflow only runs for an explicit version tag.
 
 ## One-time setup
 
-Add these **repository secrets** (Settings → Secrets and variables → Actions):
+Publishing uses **npm trusted publishing** (OIDC) — there is no `NPM_TOKEN`
+secret. On npmjs.com the `nexurejs` package is configured with a trusted
+publisher pointing at this repository's `release.yml` workflow; the workflow's
+`publish` job carries `id-token: write`, which lets npm mint short-lived
+credentials at publish time and attach build provenance automatically. The
+workflow upgrades the npm CLI to the latest version because trusted publishing
+requires npm >= 11.5.1.
 
-- `NPM_TOKEN` — an npm **automation** token with publish rights to `nexurejs`.
-- `CODECOV_TOKEN` — optional; only needed for coverage uploads.
+Optional repository secret (Settings → Secrets and variables → Actions):
 
-npm provenance additionally requires the `release.yml` `publish` job to keep its
-`id-token: write` permission (already configured).
+- `CODECOV_TOKEN` — only needed for coverage uploads in CI.
 
 ## Cutting a release
 

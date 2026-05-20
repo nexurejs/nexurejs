@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Upgrade npm (trusted publishing requires npm >= 11.5.1)
+        run: npm install --global npm@latest
+
       - name: Build distributable
         run: npm run build:dist
 
@@ -80,11 +83,15 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
+      # Publishes via npm trusted publishing (OIDC): the publish job's
+      # `id-token: write` permission lets npm mint short-lived credentials and
+      # attach provenance — no NPM_TOKEN secret is involved. The npmjs.com
+      # package must have this repo's release.yml registered as a trusted
+      # publisher.
       - name: Publish to npm
         run: npm publish --provenance --access public --tag "$DIST_TAG"
         env:
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
