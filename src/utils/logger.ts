@@ -227,16 +227,19 @@ export class Logger {
    * Internal logging method
    */
   private log(level: LogLevel, ...args: any[]): void {
-    if (!this.isLevelEnabled(level)) {
+    // Nothing to do when the level is filtered out or there is nowhere to
+    // write — skip building the message entirely.
+    if (this.transports.length === 0 || !this.isLevelEnabled(level)) {
       return;
     }
 
-    // Format arguments if custom formatter exists
+    // Format arguments if a custom formatter exists for this level.
+    // `formatters` is keyed by the (uppercase) LogLevel member names.
     let formattedArgs = args;
-    const levelName = LogLevel[level].toLowerCase();
+    const levelName = LogLevel[level] as keyof typeof LogLevel;
 
     if (this.options.formatters && levelName in this.options.formatters) {
-      const formatter = this.options.formatters[levelName as keyof typeof LogLevel];
+      const formatter = this.options.formatters[levelName];
       if (formatter) {
         formattedArgs = formatter(args);
       }

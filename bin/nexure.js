@@ -10,16 +10,22 @@ import { Command } from 'commander';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// The CLI's reported version and the version it scaffolds new projects against
+// both derive from this package's own package.json, so they cannot drift.
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json');
 
 const program = new Command();
 
 program
   .name('nexure')
   .description('NexureJS CLI - High-performance Node.js framework')
-  .version('0.3.1');
+  .version(pkg.version);
 
 // Create new project command
 program
@@ -134,7 +140,7 @@ async function initProject(projectPath, options) {
       'test:native': native ? 'node test/native.test.js' : 'echo "Native tests not configured"'
     },
     dependencies: {
-      nexurejs: '^0.3.1'
+      nexurejs: `^${pkg.version}`
     },
     devDependencies: typescript ? {
       typescript: '^5.8.2',

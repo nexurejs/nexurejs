@@ -8,6 +8,7 @@ import { SecureVersion } from 'node:tls';
 import { readFileSync } from 'node:fs';
 import { MiddlewareHandler } from '../middleware/middleware.js';
 import { Router } from '../routing/router.js';
+import { Logger } from '../utils/logger.js';
 
 /**
  * HTTPS server options
@@ -130,9 +131,9 @@ export class HttpsServerAdapter {
     const startTime = process.hrtime();
 
     try {
-      // Set default headers
+      // Set default headers. Content-Type is chosen by the route responder
+      // from the handler's return value, so it is not forced here.
       res.setHeader('X-Powered-By', 'NexureJS');
-      res.setHeader('Content-Type', 'application/json');
 
       // Run middleware pipeline
       let middlewareIndex = 0;
@@ -167,10 +168,21 @@ export class HttpsServerAdapter {
     this.logger.error(`HTTPS server error: ${error.message}`);
 
     if (req && res) {
+      // If the response has already started, the error body cannot be written.
+      if (res.headersSent || res.writableEnded) {
+        if (!res.writableEnded) {
+          res.end();
+        }
+        return;
+      }
+
       const statusCode = error.statusCode || 500;
       const message = error.message || 'Internal Server Error';
 
       res.statusCode = statusCode;
+      if (!res.hasHeader('Content-Type')) {
+        res.setHeader('Content-Type', 'application/json');
+      }
       res.end(
         JSON.stringify({
           statusCode,

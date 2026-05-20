@@ -2,7 +2,7 @@
  * Unit tests for the native module loader
  */
 
-import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { isNativeDisabled } from '../../../src/native/loader.js';
 
 describe('Native Module Loader', () => {

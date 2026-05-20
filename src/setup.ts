@@ -6,6 +6,7 @@
  */
 
 import { performance } from 'node:perf_hooks';
+import { Logger } from './utils/logger.js';
 
 const logger = new Logger();
 

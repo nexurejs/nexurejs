@@ -19,16 +19,18 @@ interface LoggerInterface {
   error: (message: string, ...args: any[]) => void;
 }
 
-// Import Logger or create a simple one if not available
+// Quiet by default: V8 optimizer diagnostics are opt-in via NEXURE_VERBOSE.
+// A library must not print to the console merely because it was imported or
+// instantiated — only genuine errors surface unconditionally.
+const v8OptimizerVerbose =
+  process.env.NEXURE_VERBOSE === 'true' || process.env.NEXURE_DEBUG === 'true';
+const v8OptimizerNoop = (): void => {};
 const Logger: LoggerInterface = {
-  debug: console.debug,
-  info: console.info,
-  warn: console.warn,
+  debug: v8OptimizerVerbose ? console.debug : v8OptimizerNoop,
+  info: v8OptimizerVerbose ? console.info : v8OptimizerNoop,
+  warn: v8OptimizerVerbose ? console.warn : v8OptimizerNoop,
   error: console.error
 };
-
-// For simplicity, we'll just use the console logger
-// This avoids import issues with logger module
 
 /**
  * Optimization status markers

@@ -2,7 +2,7 @@
  * Unit tests for the native HttpParser
  */
 
-import { describe, test, expect, beforeAll } from '@jest/globals';
+import { describe, test, expect, beforeAll } from 'vitest';
 import { HttpParser, getNativeModuleStatus } from '../../../src/native/index.js';
 
 describe('Native HttpParser', () => {

@@ -8,6 +8,7 @@
 import * as http2 from 'node:http2';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
+import { logger } from '../utils/logger.js';
 
 /**
  * Object pool for reusing objects
@@ -460,7 +461,7 @@ export function createHttp2Client(options: {
 
   // Handle connection errors
   client.on('error', err => {
-    Logger.error('HTTP/2 client error:', err);
+    logger.error('HTTP/2 client error:', err);
   });
 
   return client;

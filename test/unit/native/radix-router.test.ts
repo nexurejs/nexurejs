@@ -2,7 +2,7 @@
  * Unit tests for the native RadixRouter
  */
 
-import { describe, test, expect, beforeAll, beforeEach } from '@jest/globals';
+import { describe, test, expect, beforeAll, beforeEach } from 'vitest';
 import { RadixRouter, getNativeModuleStatus } from '../../../src/native/index.js';
 
 describe('Native RadixRouter', () => {

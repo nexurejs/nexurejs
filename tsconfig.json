@@ -3,6 +3,8 @@
     "strictNullChecks": true,
     "target": "ES2022",
     "useDefineForClassFields": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "NodeNext",
     "skipLibCheck": true,
@@ -40,5 +42,11 @@
     "experimentalSpecifierResolution": "node"
   },
   "include": ["src", "src/types/*.d.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist", "benchmarks"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "benchmarks",
+    "src/framework",
+    "test/comprehensive/framework.test.ts"
+  ]
 }

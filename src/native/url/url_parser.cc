@@ -235,6 +235,39 @@ namespace UrlParser {
     return parts;
   }
 
+  // Decode an application/x-www-form-urlencoded component: '+' becomes a space
+  // and "%XX" becomes the corresponding byte. A '%' not followed by two hex
+  // digits is preserved literally. Mirrors the JS-fallback UrlParser so the
+  // native and JS modes agree.
+  static std::string urlDecodeComponent(const char* data, size_t length) {
+    std::string out;
+    out.reserve(length);
+    auto hexVal = [](char c) -> int {
+      if (c >= '0' && c <= '9') return c - '0';
+      if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+      if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+      return -1;
+    };
+    for (size_t i = 0; i < length; ++i) {
+      char c = data[i];
+      if (c == '+') {
+        out += ' ';
+      } else if (c == '%' && i + 2 < length) {
+        int hi = hexVal(data[i + 1]);
+        int lo = hexVal(data[i + 2]);
+        if (hi >= 0 && lo >= 0) {
+          out += static_cast<char>((hi << 4) | lo);
+          i += 2;
+        } else {
+          out += c;
+        }
+      } else {
+        out += c;
+      }
+    }
+    return out;
+  }
+
   // SIMD-optimized query string parsing
   std::unordered_map<std::string, std::string> parseQueryString(const char* queryString, size_t length) {
     std::unordered_map<std::string, std::string> queryParams;
@@ -258,13 +291,14 @@ namespace UrlParser {
         size_t equalsPos = SIMDSearch::findChar(queryString + start, paramLength, '=');
 
         if (equalsPos < paramLength) {
-          // We have a key-value pair
-          std::string key(queryString + start, equalsPos);
-          std::string value(queryString + start + equalsPos + 1, paramLength - equalsPos - 1);
+          // We have a key-value pair — decode both halves.
+          std::string key = urlDecodeComponent(queryString + start, equalsPos);
+          std::string value =
+            urlDecodeComponent(queryString + start + equalsPos + 1, paramLength - equalsPos - 1);
           queryParams[std::move(key)] = std::move(value);
         } else {
-          // We have a key with no value
-          std::string key(queryString + start, paramLength);
+          // We have a key with no value.
+          std::string key = urlDecodeComponent(queryString + start, paramLength);
           queryParams[std::move(key)] = "";
         }
       }
@@ -431,6 +465,26 @@ namespace UrlParser {
     return Napi::String::New(env, result);
   }
 
+  // Encode a string as an application/x-www-form-urlencoded component:
+  // unreserved characters (RFC 3986: A-Z a-z 0-9 - _ . ~) pass through, every
+  // other byte becomes "%XX". The inverse of urlDecodeComponent.
+  static std::string urlEncodeComponent(const std::string& input) {
+    static const char hex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(input.size() * 3);
+    for (unsigned char c : input) {
+      if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+          (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+        out += static_cast<char>(c);
+      } else {
+        out += '%';
+        out += hex[c >> 4];
+        out += hex[c & 0x0F];
+      }
+    }
+    return out;
+  }
+
   // Optimized query string formatting
   Napi::Value FormatQueryString(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -455,15 +509,15 @@ namespace UrlParser {
         result += '&';
       }
 
-      result += key.As<Napi::String>().Utf8Value();
+      result += urlEncodeComponent(key.As<Napi::String>().Utf8Value());
       result += '=';
 
       if (value.IsString()) {
-        result += value.As<Napi::String>().Utf8Value();
+        result += urlEncodeComponent(value.As<Napi::String>().Utf8Value());
       } else if (!value.IsNull() && !value.IsUndefined()) {
         // Convert non-string values to string
         Napi::String strValue = value.ToString();
-        result += strValue.Utf8Value();
+        result += urlEncodeComponent(strValue.Utf8Value());
       }
     }
 

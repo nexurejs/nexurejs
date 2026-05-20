@@ -14,7 +14,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
-import tar from 'tar';
 import crypto from 'crypto';
 
 // Get directory paths
@@ -38,18 +37,20 @@ const REQUIRED_FILES = [
   'README.md',
   'LICENSE',
   'dist/index.js',
-  'dist/index.d.ts',
-  'dist/cjs/index.js'
+  'dist/index.d.ts'
 ];
 
-// Files that should not be included
+// Files/directories that must never be included in the published package.
+// (Install scripts under scripts/ are shipped intentionally via the "files"
+// allowlist, so scripts/ is not listed here.)
 const EXCLUDED_FILES = [
   'node_modules',
   '.git',
   '.github',
   'coverage',
   'test',
-  'scripts',
+  'benchmarks',
+  'examples',
   '.env',
   '.npmrc',
   '.vscode'
@@ -176,19 +177,26 @@ async function verifyRequiredFiles() {
 async function verifyPackContents() {
   printSectionHeader('Verifying Package Contents');
 
-  // Run npm pack to simulate what will be published
-  const packResult = runCommand('npm pack --dry-run', { silent: true });
+  // Run npm pack with --json to get a structured list of what will be published.
+  // (The human-readable `npm pack` output goes to stderr and its format changes
+  // between npm versions; --json is stable and lands on stdout.)
+  const packResult = runCommand('npm pack --dry-run --json', { silent: true });
 
   if (!packResult.success) {
     console.error(`${Colors.RED}npm pack failed:${Colors.RESET}`, packResult.error);
     return false;
   }
 
-  // Parse the output to get the list of included files
-  const includedFiles = packResult.output
-    .split('\n')
-    .filter(line => line.startsWith('npm notice') && line.includes('=>'))
-    .map(line => line.split('=>')[1].trim());
+  // Parse the JSON output to get the list of included files
+  let includedFiles = [];
+  try {
+    const packData = JSON.parse(packResult.output);
+    const entry = Array.isArray(packData) ? packData[0] : packData;
+    includedFiles = (entry?.files || []).map(file => file.path);
+  } catch (error) {
+    console.error(`${Colors.RED}Could not parse npm pack output:${Colors.RESET}`, error.message);
+    return false;
+  }
 
   // Check for required files
   const missingRequired = REQUIRED_FILES.filter(file =>
@@ -294,7 +302,6 @@ async function verifyDistFiles() {
   // Check for non-empty index files
   const criticalFiles = [
     'index.js',
-    'cjs/index.js',
     'index.d.ts'
   ];
 

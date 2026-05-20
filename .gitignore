@@ -68,9 +68,10 @@ lerna-debug.log*
 .settings/
 *.sublime-workspace
 
-# Test coverage
+# Test coverage and reports
 coverage/
 .nyc_output/
+test-results.json
 
 # Benchmark results
 benchmark-results/

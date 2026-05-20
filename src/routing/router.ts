@@ -14,6 +14,8 @@ import { URL } from 'node:url';
 import { MiddlewareHandler, getRouteMetadata, composeMiddleware, parseBody } from '../types/index.js';
 import { Container } from '../di/container.js';
 import { HttpMethod } from '../http/http-method.js';
+import { HttpException } from '../http/http-exception.js';
+import { hasBody } from '../http/http-utils.js';
 
 // Re-export for compatibility with previous imports from this module
 export { HttpMethod } from '../http/http-method.js';
@@ -32,6 +34,8 @@ export interface Route {
   method: HttpMethod;
   handler: (_req: IncomingMessage, _res: ServerResponse) => Promise<any>;
   middlewares: MiddlewareHandler[];
+  /** The middleware chain composed once at registration (undefined when empty). */
+  composedMiddleware?: MiddlewareHandler;
   controller: any;
 }
 
@@ -424,12 +428,16 @@ export class Router {
       const fullPath = this.combinePaths(this.globalPrefix, controllerPath, routePath);
       const methodMiddlewares = routeMetadata.middlewares || [];
 
+      // Resolve the controller method once, at registration time.
+      const handlerMethod = controller.prototype[propertyKey];
+
       // Create route handler
       const routeHandler = async (req: IncomingMessage, res: ServerResponse): Promise<any> => {
-        const method = controller.prototype[propertyKey];
         const params = this.extractParams(req);
         const query = this.extractQuery(req);
-        const body = await parseBody(req);
+        // Skip body parsing for requests that cannot carry a body (GET/HEAD/…)
+        // — avoids setting up stream listeners for an empty payload.
+        const body = hasBody(req) ? await parseBody(req) : undefined;
 
         // Create context object with request data
         const context = {
@@ -441,12 +449,20 @@ export class Router {
         };
 
         // Call the controller method with the context
-        const result = await method.call(controllerInstance, context);
+        const result = await handlerMethod.call(controllerInstance, context);
 
-        // Send the response
+        // Send the response, choosing a Content-Type from the result shape
+        // unless a middleware or the handler already set one.
         if (!res.writableEnded) {
           res.statusCode = routeMetadata.statusCode || 200;
-          res.end(typeof result === 'string' ? result : JSON.stringify(result));
+          const isString = typeof result === 'string';
+          if (!res.headersSent && !res.hasHeader('Content-Type')) {
+            res.setHeader(
+              'Content-Type',
+              isString ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8'
+            );
+          }
+          res.end(isString ? result : JSON.stringify(result));
         }
 
         return result;
@@ -487,6 +503,9 @@ export class Router {
       method,
       handler,
       middlewares,
+      // Compose the middleware chain once here instead of on every request.
+      composedMiddleware:
+        middlewares.length > 0 ? composeMiddleware(middlewares) : undefined,
       controller
     });
   }
@@ -512,10 +531,9 @@ export class Router {
     // Add params to request object
     (req as any).params = params;
 
-    // Execute route middlewares
-    if (route.middlewares.length > 0) {
-      const composedMiddleware = composeMiddleware(route.middlewares);
-      await composedMiddleware(req, res, async () => {
+    // Execute route middlewares (composed once at registration time)
+    if (route.composedMiddleware) {
+      await route.composedMiddleware(req, res, async () => {
         await route.handler(req, res);
       });
     } else {
@@ -531,11 +549,18 @@ export class Router {
   findRoute(method: HttpMethod, path: string): RouteMatch | null {
     this.stats.searches++;
 
+    // Route matching depends only on the pathname, never the query string.
+    // Strip the query with indexOf/slice — far cheaper than constructing a URL
+    // on every request — and key the cache by pathname so requests to the same
+    // route with different query strings share a single cache entry.
+    const queryIndex = path.indexOf('?');
+    const pathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
+
     // Check routing cache first
     if (this.cacheTtl > 0) {
       this.maybeCleanupCache();
 
-      const cacheKey = `${method}:${path}`;
+      const cacheKey = `${method}:${pathname}`;
       const cached = this.routeCache.get(cacheKey);
 
       if (cached) {
@@ -553,10 +578,6 @@ export class Router {
       // Cache miss - perform lookup
       this.stats.misses++;
 
-      // Parse the URL to get the pathname
-      const parsedUrl = new URL(path, 'http://localhost');
-      const pathname = parsedUrl.pathname;
-
       // Search for a route match
       const result = this.root.search(pathname, method);
 
@@ -572,8 +593,6 @@ export class Router {
       return result;
     } else {
       // Caching disabled - perform lookup directly
-      const parsedUrl = new URL(path, 'http://localhost');
-      const pathname = parsedUrl.pathname;
       return this.root.search(pathname, method);
     }
   }
@@ -634,10 +653,17 @@ export class Router {
    */
   private extractQuery(req: IncomingMessage): Record<string, string> {
     const url = req.url || '/';
-    const parsedUrl = new URL(url, 'http://localhost');
-    const query: Record<string, string> = {};
+    const queryIndex = url.indexOf('?');
 
-    for (const [key, value] of parsedUrl.searchParams.entries()) {
+    // Fast path: most requests have no query string — skip URL parsing entirely.
+    if (queryIndex === -1) {
+      return {};
+    }
+
+    const query: Record<string, string> = {};
+    const searchParams = new URLSearchParams(url.slice(queryIndex + 1));
+
+    for (const [key, value] of searchParams.entries()) {
       query[key] = value;
     }
 

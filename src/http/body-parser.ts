@@ -41,6 +41,11 @@ export async function parseRawBuffer(
 ): Promise<any> {
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
 
+  // An empty body (e.g. GET/HEAD/DELETE requests) is not a content-type error.
+  if (buffer.length === 0) {
+    return undefined;
+  }
+
   if (!contentType || !mergedOptions.contentTypes.some(type => contentType.startsWith(type))) {
     throw new Error(`Unsupported content type: ${contentType}`);
   }
@@ -96,14 +101,13 @@ function parseJson(buffer: Buffer): any {
  * Parse URL encoded buffer
  */
 function parseUrlEncoded(buffer: Buffer): Record<string, string> {
-  const text = buffer.toString('utf8');
   const result: Record<string, string> = {};
 
-  for (const pair of text.split('&')) {
-    const [key, value] = pair.split('=').map(decodeURIComponent);
-    if (key) {
-      result[key] = value || '';
-    }
+  // URLSearchParams decodes correctly: '+' becomes a space and only the first
+  // '=' separates key/value, so values may themselves contain '='.
+  const params = new URLSearchParams(buffer.toString('utf8'));
+  for (const [key, value] of params.entries()) {
+    result[key] = value;
   }
 
   return result;

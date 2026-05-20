@@ -1,119 +1,29 @@
-# Source files (we ship compiled JS)
-src/
-*.ts
-!*.d.ts
+# What gets published is defined by the "files" allowlist in package.json.
+#
+# This file exists only to strip build artifacts that can appear *inside* the
+# allowlisted directories, and to stop npm from falling back to .gitignore
+# (which excludes dist/ and would otherwise ship nothing).
+#
+# It MUST NOT exclude dist/, bin/, binding.gyp or the native sources.
 
-# Test files
-test/
-tests/
-__tests__/
-*.test.js
-*.test.ts
-*.spec.js
-*.spec.ts
-test-*.js
-test-*.cjs
-test-*.mjs
+# Intermediate TypeScript output. `tsc` emits to dist/build/; scripts/build.js
+# then assembles the publishable files into dist/ proper. Ship the result,
+# not the intermediate tree.
+dist/build/
 
-# Build files
+# Native build intermediates. The compiled .node binary is delivered through
+# the platform-specific optionalDependencies (or rebuilt by the install
+# scripts) — it is never bundled into this package.
 build/
-build-configs/
-build-scripts/
-scripts/
-benchmarks/
-profiling/
-docker-builds/
+.node-gyp/
+*.o
+*.obj
+*.node
+*.a
+*.lib
 
-# Documentation source
-docs/
-examples/
-assets/
-
-# Configuration files
-.github/
-.vscode/
-.idea/
-.eslintrc*
-.prettierrc*
-.editorconfig
-.gitignore
-.gitattributes
-.husky/
-.commitlintrc.json
-commitlint.config.js
-jest.config.js
-jest.integration.config.js
-tsconfig.json
-tsconfig.*.json
-eslint.config.js
-codecov.yml
-.travis.yml
-.circleci/
-
-# Native build files
-binding.gyp
-binding-*.gyp
-*.cc
-*.h
-*.cpp
-*.hpp
-nothing.c
-encoder-*.cc
-*-main.cc
-*-module.cc
-
-# Temporary files
+# Caches, logs, editor and OS noise
+*.tsbuildinfo
 *.log
-*.tmp
-*.temp
-coverage/
-.nyc_output/
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.npm/
-.yarn/
-
-# OS files
 .DS_Store
 Thumbs.db
-Desktop.ini
-
-# IDE files
-*.swp
-*.swo
-*~
-*.sublime-project
-*.sublime-workspace
-
-# Test coverage
-coverage/
-.nyc_output/
-
-# Local environment
-.env
-.env.*
-
-# Package artifacts
-packages/
-prebuilds/
-*.tgz
-
-# Performance/profiling
-benchmark-results/
-*.heapsnapshot
-*.cpuprofile
-
-# Verification/utility files
-verify-app.cjs
-perf-test.js
-perf-test.cjs
-
-# Misc
-TODO.md
-NOTES.md
-*.bak
-.cache/
-lib/

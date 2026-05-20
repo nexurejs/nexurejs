@@ -2,7 +2,7 @@
   "name": "nexurejs",
   "version": "1.3.0-phase2",
   "description": "Ultimate high-performance Node.js framework with SIMD acceleration, native memory management, and advanced optimization. 3-8x faster than Express.js with built-in security and monitoring.",
-  "main": "dist/cjs/index.js",
+  "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -17,6 +17,7 @@
     "// === BUILD ===": "",
     "build": "node scripts/build.js",
     "build:ts": "tsc",
+    "build:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "build:framework": "tsc --project tsconfig.framework.json",
     "build:native": "node scripts/build.js --force",
     "build:native:pack": "node scripts/build.js --pack-only",
@@ -133,22 +134,16 @@
     "examples:demo": "node scripts/run-examples-demo.js",
 
     "// === DOCUMENTATION ===": "",
-    "docs:dev": "cd docs && npm run dev",
-    "docs:build": "cd docs && npm run build",
-    "docs:serve": "cd docs && npm run serve",
     "docs:check": "node scripts/check-docs-links.js",
-    "docs:generate": "node scripts/generate-docs.js",
 
     "// === RELEASE & PUBLISHING ===": "",
     "release": "node scripts/release.js",
-    "release:patch": "node scripts/release.js --type=patch",
-    "release:minor": "node scripts/release.js --type=minor",
-    "release:major": "node scripts/release.js --type=major",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major",
     "release:pre": "node scripts/release.js --pre",
-    "release:canary": "node scripts/release.js --canary",
     "release:dryrun": "node scripts/release.js --dry-run",
     "publish:dry": "npm publish --dry-run",
-    "publish:beta": "npm publish --tag beta",
 
     "// === CI/CD ===": "",
     "ci:install": "npm ci",
@@ -171,7 +166,8 @@
     "prepare": "husky",
     "pre-commit": "lint-staged",
     "preinstall": "node scripts/preinstall.js",
-    "postinstall": "node scripts/postinstall.js"
+    "postinstall": "node scripts/postinstall.js",
+    "prepublishOnly": "node scripts/verify-package.js"
   },
   "keywords": [
     "nodejs",
@@ -272,12 +268,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Braineanear/nexurejs.git"
+    "url": "https://github.com/nexurejs/nexurejs.git"
   },
   "bugs": {
-    "url": "https://github.com/Braineanear/nexurejs/issues"
+    "url": "https://github.com/nexurejs/nexurejs/issues"
   },
-  "homepage": "https://github.com/Braineanear/nexurejs#readme",
+  "homepage": "https://github.com/nexurejs/nexurejs#readme",
   "config": {
     "commitizen": {
       "path": "cz-conventional-changelog"
@@ -285,70 +281,50 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/cjs/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./framework": {
-      "import": "./dist/framework/index.js",
-      "require": "./dist/cjs/framework/index.js",
-      "types": "./dist/framework/index.d.ts"
-    },
-    "./native": {
-      "import": "./dist/native/index.js",
-      "require": "./dist/cjs/native/index.js",
-      "types": "./dist/native/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./http": {
+      "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js",
-      "require": "./dist/cjs/http/index.js",
-      "types": "./dist/http/index.d.ts"
+      "default": "./dist/http/index.js"
     },
     "./routing": {
+      "types": "./dist/routing/index.d.ts",
       "import": "./dist/routing/index.js",
-      "require": "./dist/cjs/routing/index.js",
-      "types": "./dist/routing/index.d.ts"
+      "default": "./dist/routing/index.js"
     },
     "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
       "import": "./dist/middleware/index.js",
-      "require": "./dist/cjs/middleware/index.js",
-      "types": "./dist/middleware/index.d.ts"
-    },
-    "./security": {
-      "import": "./dist/security/index.js",
-      "require": "./dist/cjs/security/index.js",
-      "types": "./dist/security/index.d.ts"
-    },
-    "./performance": {
-      "import": "./dist/performance/index.js",
-      "require": "./dist/cjs/performance/index.js",
-      "types": "./dist/performance/index.d.ts"
+      "default": "./dist/middleware/index.js"
     },
     "./validation": {
+      "types": "./dist/validation/index.d.ts",
       "import": "./dist/validation/index.js",
-      "require": "./dist/cjs/validation/index.js",
-      "types": "./dist/validation/index.d.ts"
+      "default": "./dist/validation/index.js"
     },
-    "./utils": {
-      "import": "./dist/utils/index.js",
-      "require": "./dist/cjs/utils/index.js",
-      "types": "./dist/utils/index.d.ts"
+    "./native": {
+      "types": "./dist/native/index.d.ts",
+      "import": "./dist/native/index.js",
+      "default": "./dist/native/index.js"
     },
     "./types": {
+      "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js",
-      "require": "./dist/cjs/types/index.js",
-      "types": "./dist/types/index.d.ts"
-    }
+      "default": "./dist/types/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist/**/*",
-    "lib/**/*",
-    "bin/**/*",
-    "src/**/*",
-    "docs/**/*",
-    "examples/**/*",
-    "benchmarks/**/*",
+    "dist/",
+    "bin/",
+    "src/native/",
     "binding.gyp",
+    "scripts/build.js",
+    "scripts/preinstall.js",
+    "scripts/postinstall.js",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"

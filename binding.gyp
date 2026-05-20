@@ -40,10 +40,6 @@
             "-funroll-loops",
             "-fomit-frame-pointer",
             "-finline-functions",
-            "-march=native",
-            "-mtune=native",
-            "-mavx2",
-            "-msse4.2",
             "-flto",
             "-fvectorize",
             "-Wno-unused-parameter",
@@ -51,21 +47,15 @@
             "-Wno-unused-variable"
           ]
         }],
-        ["OS=='mac'", {
+        ["OS!='win' and target_arch=='x64'", {
           "cflags_cc": [
-            "-O3",
-            "-ffast-math",
-            "-funroll-loops",
-            "-fomit-frame-pointer",
-            "-finline-functions",
             "-march=native",
             "-mtune=native",
-            "-flto",
-            "-fvectorize",
-            "-Wno-unused-parameter",
-            "-Wno-sign-compare",
-            "-Wno-unused-variable"
-          ],
+            "-mavx2",
+            "-msse4.2"
+          ]
+        }],
+        ["OS=='mac'", {
           "xcode_settings": {
             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
             "CLANG_CXX_LIBRARY": "libc++",
@@ -96,11 +86,6 @@
       ],
       "cflags!": [ "-fno-exceptions" ],
       "cflags_cc!": [ "-fno-exceptions" ]
-    },
-    {
-      "target_name": "nothing",
-      "type": "static_library",
-      "sources": [ "nothing.c" ]
     }
   ]
 }

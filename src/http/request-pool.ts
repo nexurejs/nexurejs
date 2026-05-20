@@ -7,6 +7,7 @@ import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
 import { ObjectPool } from '../native/index.js';
 import { v8Optimizer } from '../utils/v8-optimizer.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Request pool options
@@ -84,7 +85,7 @@ abstract class BaseObjectPool<T> {
         });
         this.objectPool = new ObjectPool(poolOptions);
       } catch (error) {
-        Logger.warn('Failed to initialize native object pool:', error);
+        logger.warn('Failed to initialize native object pool:', error);
         this.objectPool = null;
       }
     }
@@ -260,11 +261,17 @@ export class RequestPool extends BaseObjectPool<IncomingMessage> {
     req.trailers = {};
     req.complete = false;
 
-    // Reset internal properties
-    (req as any)._readableState.buffer.clear();
-    (req as any)._readableState.length = 0;
-    (req as any)._readableState.ended = false;
-    (req as any)._readableState.endEmitted = false;
+    // Reset internal stream state, guarding against Node-version differences
+    // in the shape of _readableState (ResponsePool.release does the same).
+    const readableState = (req as any)._readableState;
+    if (readableState) {
+      if (readableState.buffer && typeof readableState.buffer.clear === 'function') {
+        readableState.buffer.clear();
+      }
+      readableState.length = 0;
+      readableState.ended = false;
+      readableState.endEmitted = false;
+    }
 
     // Add back to pool
     this.pool.push(req);

@@ -12,10 +12,11 @@
 
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream, Stats, promises as fs } from 'node:fs';
-import { extname, join, normalize, resolve, isAbsolute } from 'node:path';
+import { extname, join, normalize, resolve, isAbsolute, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { parse as _parseUrl } from 'node:url';
 import { MiddlewareHandler } from './middleware.js';
+import { Logger } from '../utils/logger.js';
 
 // Default MIME types for common file extensions
 const DEFAULT_MIME_TYPES: Record<string, string> = {
@@ -301,7 +302,19 @@ export class StaticFileMiddleware {
 
     // Get the path from the request URL
     const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
-    const path = decodeURIComponent(url.pathname);
+
+    let path: string;
+    try {
+      path = decodeURIComponent(url.pathname);
+    } catch {
+      // Malformed percent-encoding in the request URL.
+      if (this.options.fallthrough) {
+        return next();
+      }
+      res.statusCode = 400;
+      res.end('Bad Request');
+      return;
+    }
 
     // Check for path traversal attempts
     if (path.includes('..') || !isAbsolute(normalize(`/${path}`))) {
@@ -316,6 +329,17 @@ export class StaticFileMiddleware {
     try {
       // Join with the root directory
       const fullPath = join(this.options.root, path);
+
+      // Defense in depth: even after the '..' check, verify the resolved path
+      // cannot escape the configured root before touching the filesystem.
+      if (fullPath !== this.options.root && !fullPath.startsWith(this.options.root + sep)) {
+        if (this.options.fallthrough) {
+          return next();
+        }
+        res.statusCode = 403;
+        res.end('Forbidden');
+        return;
+      }
 
       const stats = await fs.stat(fullPath);
 

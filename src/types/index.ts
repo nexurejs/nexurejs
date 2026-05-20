@@ -268,8 +268,11 @@ export class JsRadixRouter {
 }
 
 export class NativeJsonProcessor {
-  parse(_json: string): any {
+  parse(_json: string | Buffer): any {
     return {};
+  }
+  stringify(_value: any): string {
+    return '';
   }
   parseStream(_buffer: Buffer): any {
     return {};

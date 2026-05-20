@@ -6,8 +6,8 @@ export default defineConfig({
     // Test environment
     environment: 'node',
 
-    // Global setup and teardown
-    globalSetup: './test/setup.ts',
+    // Enable global test APIs (describe/test/expect/vi) without explicit imports
+    globals: true,
 
     // Test patterns
     include: [
@@ -21,7 +21,11 @@ export default defineConfig({
       'build/**',
       'coverage/**',
       'benchmarks/**',
-      'examples/**'
+      'examples/**',
+      // Legacy standalone native scripts — run via `npm run test:native`, not vitest
+      'test/native/**',
+      // Targets the unfinished src/framework/ rewrite (see CLAUDE.md); excluded until that exists
+      'test/comprehensive/framework.test.ts'
     ],
 
     // Timeout settings
@@ -59,13 +63,14 @@ export default defineConfig({
       }
     },
 
-    // Parallel execution
-    pool: 'threads',
+    // Parallel execution. Use 'forks' (a process per test file) rather than
+    // 'threads': native addons are generally process-safe but not thread-safe,
+    // so a test file that loads the native binding cannot abort the whole run.
+    pool: 'forks',
     poolOptions: {
-      threads: {
-        singleThread: false,
-        maxThreads: 4,
-        minThreads: 1
+      forks: {
+        maxForks: 4,
+        minForks: 1
       }
     },
 

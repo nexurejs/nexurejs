@@ -5,6 +5,7 @@
 import cluster, { Worker } from 'node:cluster';
 import { cpus } from 'node:os';
 import { EventEmitter } from 'node:events';
+import { Logger } from '../utils/logger.js';
 
 /**
  * Cluster manager options
@@ -74,7 +75,10 @@ export class ClusterManager extends EventEmitter {
   private restartDelay: number;
   private maxRestarts: number;
   private logger = new Logger();
-  private workerRestarts = new Map<number, number>();
+  // Timestamps of recent worker restarts, for crash-loop detection. Counting
+  // per worker.id does not work — each restarted worker gets a fresh id.
+  private restartTimestamps: number[] = [];
+  private readonly restartWindowMs = 60000;
 
   /**
    * Create a new cluster manager
@@ -124,21 +128,31 @@ export class ClusterManager extends EventEmitter {
       this.logger.info(`Worker ${worker.id} exited with code ${code} and signal ${signal}`);
       this.emit('exit', worker, code, signal);
 
-      // Restart the worker if enabled
+      // Restart the worker if enabled, unless we are in a crash loop.
+      // Restarts are counted over a recent time window (not by worker.id,
+      // since every restarted worker receives a brand-new id).
       if (this.restartOnExit) {
-        const workerId = worker.id;
-        const restarts = this.workerRestarts.get(workerId) || 0;
+        const now = Date.now();
+        this.restartTimestamps = this.restartTimestamps.filter(
+          t => now - t < this.restartWindowMs
+        );
 
-        if (restarts < this.maxRestarts) {
-          this.workerRestarts.set(workerId, restarts + 1);
+        if (this.restartTimestamps.length < this.maxRestarts) {
+          this.restartTimestamps.push(now);
 
-          this.logger.info(`Restarting worker ${workerId} (${restarts + 1}/${this.maxRestarts})`);
+          this.logger.info(
+            `Restarting worker (${this.restartTimestamps.length}/${this.maxRestarts} ` +
+              `restarts in the last ${this.restartWindowMs / 1000}s)`
+          );
 
           setTimeout(() => {
             this.forkWorker();
           }, this.restartDelay);
         } else {
-          this.logger.warn(`Worker ${workerId} exceeded maximum restarts (${this.maxRestarts})`);
+          this.logger.warn(
+            `Cluster exceeded ${this.maxRestarts} restarts within ` +
+              `${this.restartWindowMs / 1000}s — crash loop detected, not restarting`
+          );
         }
       }
     });

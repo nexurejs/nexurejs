@@ -39,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced middleware system with streaming support
 - Optimized build process with parallel compilation
 - Updated examples to use ES modules
+- Consolidated CI/CD into focused `ci.yml` (lint, test matrix, build check) and
+  `release.yml` (tag-triggered publish) workflows; removed the overlapping
+  `build.yml`, `tests.yml` and `ci-cd.yml`
+- npm package contents are now controlled by a minimal `files` allowlist —
+  source, tests, benchmarks, examples and docs are no longer published
+- Aligned `package.json` (`main`, `exports`) with the real ESM build output,
+  produced by the new `build:dist` script and `tsconfig.build.json`
 
 ### Fixed
 - Fixed 3 security vulnerabilities in dependencies
@@ -48,6 +55,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Logger import in stream middleware
 - Fixed ES module compatibility in examples
 - Fixed file naming issues (safe-wrapper.js.ts)
+- Release pipeline no longer publishes a fallback stub package when the build
+  fails, and the unsafe force-push / `npm unpublish` rollback job was removed
+- `scripts/release.js` no longer crashes on a stale `docs/CHANGELOG.md` path and
+  now bumps the version correctly from a pre-release base
+- `nexure` CLI version is read from `package.json` instead of a hardcoded value
+- `npm run build` no longer regenerates and overwrites the CI workflow files
+- Documentation link checker (`npm run docs:check`) replaces the broken
+  `docs:dev`/`docs:build`/`docs:serve`/`docs:generate` scripts
 
 ### Security
 - Updated fastify to fix high-severity vulnerability

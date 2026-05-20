@@ -5,18 +5,18 @@
  * and memory efficiency.
  */
 
-import { readFile, writeFile, mkdir, stat, unlink, access } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat, unlink, access, rename } from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { join, dirname, basename, extname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Buffer } from 'node:buffer';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { globalPool } from './buffer-pool.js';
 import { tmpdir } from 'node:os';
 
 // Import crypto
 import crypto from 'crypto';
+import { logger } from './logger.js';
 
 /**
  * Generate a random string of specified length
@@ -181,26 +181,16 @@ export function resolvePath(path: string): string {
  * @param options - Read options
  * @returns File contents
  */
-export async function readFileContents(path: string, options: FileOptions = {}): Promise<Buffer> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+export async function readFileContents(path: string, _options: FileOptions = {}): Promise<Buffer> {
   path = resolvePath(path);
 
   try {
-    if (opts.useBufferPool) {
-      const stats = await stat(path);
-      const buffer = globalPool.acquire(stats.size);
-
-      try {
-        const fileHandle = await readFile(path);
-        fileHandle.copy(buffer);
-        return buffer;
-      } catch (err) {
-        globalPool.release(buffer);
-        throw err;
-      }
-    } else {
-      return await readFile(path);
-    }
+    // fs.readFile already returns a correctly-sized buffer. The previous
+    // "buffer pool" path read the file AND copied it into a pooled buffer —
+    // an extra allocation plus a copy, with a TOCTOU bug: a file resized
+    // between stat() and readFile() produced a truncated or garbage-padded
+    // result. A plain readFile is both faster and correct.
+    return await readFile(path);
   } catch (err) {
     throw new Error(
       `Failed to read file ${path}: ${err instanceof Error ? err.message : String(err)}`
@@ -217,13 +207,7 @@ export async function readFileContents(path: string, options: FileOptions = {}):
 export async function readTextFile(path: string, options: FileOptions = {}): Promise<string> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const buffer = await readFileContents(path, options);
-  const text = buffer.toString(opts.encoding);
-
-  if (opts.useBufferPool) {
-    globalPool.release(buffer);
-  }
-
-  return text;
+  return buffer.toString(opts.encoding);
 }
 
 /**
@@ -249,10 +233,16 @@ export async function writeFileContents(
     const buffer = typeof data === 'string' ? Buffer.from(data, opts.encoding) : data;
 
     if (opts.safeWrite) {
-      // Write to temporary file first, then rename
+      // Write to a temporary file first, then atomically rename into place.
       const tempPath = `${path}.${randomString(8)}.tmp`;
       await writeFile(tempPath, buffer);
-      await renameFile(tempPath, path);
+      try {
+        await renameFile(tempPath, path);
+      } catch (renameErr) {
+        // Don't leave the orphaned temp file behind on failure.
+        await unlink(tempPath).catch(() => {});
+        throw renameErr;
+      }
     } else {
       await writeFile(path, buffer);
     }
@@ -302,12 +292,25 @@ export async function ensureDirectory(dir: string): Promise<void> {
  */
 export async function renameFile(oldPath: string, newPath: string): Promise<void> {
   try {
-    // Node's rename has issues with cross-device links
-    // Read and write is more reliable for temp files
-    const content = await readFile(oldPath);
-    await writeFile(newPath, content);
-    await unlink(oldPath);
+    // fs.rename is atomic when both paths are on the same filesystem — this is
+    // exactly what makes safeWrite safe: readers never observe a partial file.
+    await rename(oldPath, newPath);
   } catch (err) {
+    // Only fall back to non-atomic copy + unlink for genuine cross-device moves.
+    if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
+      try {
+        const content = await readFile(oldPath);
+        await writeFile(newPath, content);
+        await unlink(oldPath);
+        return;
+      } catch (fallbackErr) {
+        throw new Error(
+          `Failed to rename file ${oldPath} to ${newPath}: ${
+            fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+          }`
+        );
+      }
+    }
     throw new Error(
       `Failed to rename file ${oldPath} to ${newPath}: ${
         err instanceof Error ? err.message : String(err)
@@ -341,7 +344,7 @@ export async function getFileMetadata(path: string): Promise<FileMetadata> {
       isDirectory: stats.isDirectory()
     };
   } catch (err) {
-    Logger.error(`Failed to get file metadata for ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    logger.debug(`File metadata unavailable for ${path}: ${err instanceof Error ? err.message : String(err)}`);
     return {
       path,
       size: 0,
@@ -367,8 +370,9 @@ export async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
-  } catch (err) {
-    Logger.error(`Failed to check if file exists ${path}: ${err instanceof Error ? err.message : String(err)}`);
+  } catch {
+    // A missing (or inaccessible) file is the expected negative result here,
+    // not an error condition worth logging.
     return false;
   }
 }
@@ -394,16 +398,24 @@ export async function copyFile(
       await ensureDirectory(dirname(destination));
     }
 
-    // Use streaming for efficiency
+    // Stream the copy. With safeWrite, write to a uniquely named temp file
+    // (a fixed ".tmp" name would collide between concurrent copies to the
+    // same destination) and atomically rename it into place.
+    const tempPath = opts.safeWrite ? `${destination}.${randomString(8)}.tmp` : destination;
     const readStream = createReadStream(source, {
       highWaterMark: opts.bufferSize
     });
-    const writeStream = createWriteStream(opts.safeWrite ? `${destination}.tmp` : destination);
+    const writeStream = createWriteStream(tempPath);
 
     await pipeline(readStream, writeStream);
 
     if (opts.safeWrite) {
-      await renameFile(`${destination}.tmp`, destination);
+      try {
+        await renameFile(tempPath, destination);
+      } catch (renameErr) {
+        await unlink(tempPath).catch(() => {});
+        throw renameErr;
+      }
     }
   } catch (err) {
     throw new Error(

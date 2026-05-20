@@ -98,9 +98,12 @@ export class CryptoService {
    * @returns Random string
    */
   randomString(length: number = 32, encoding: BufferEncoding = 'hex'): string {
-    return randomBytes(Math.ceil(length / 2))
-      .toString(encoding)
-      .slice(0, length);
+    // Generate `length` random bytes: every supported encoding (hex, base64,
+    // base64url, ...) yields at least one character per byte, so slicing to
+    // `length` always produces a string of exactly the requested length.
+    // The previous ceil(length / 2) only held for hex and returned short
+    // strings for base64/base64url.
+    return randomBytes(length).toString(encoding).slice(0, length);
   }
 
   /**

@@ -24,7 +24,8 @@ private:
 
   // Safe parsing helpers
   bool SafeParseRequestLine(const std::string& data, Napi::Object& result, Napi::Env env);
-  bool SafeParseHeaders(const std::string& data, Napi::Object& headers, Napi::Env env);
+  bool SafeParseHeaders(const std::string& data, Napi::Object& headers, Napi::Env env,
+                        bool skipRequestLine);
   std::string SafeTrim(const std::string& str);
   std::vector<std::string> SafeSplit(const std::string& str, const std::string& delimiter);
 
@@ -105,7 +106,7 @@ Napi::Value SafeHttpParser::ParseRequest(const Napi::CallbackInfo& info) {
 
     // Safe headers parsing
     Napi::Object headers = Napi::Object::New(env);
-    if (!SafeParseHeaders(requestData, headers, env)) {
+    if (!SafeParseHeaders(requestData, headers, env, true)) {
       Napi::Error::New(env, "Failed to parse headers").ThrowAsJavaScriptException();
       return env.Null();
     }
@@ -192,18 +193,24 @@ bool SafeHttpParser::SafeParseRequestLine(const std::string& data, Napi::Object&
   }
 }
 
-bool SafeHttpParser::SafeParseHeaders(const std::string& data, Napi::Object& headers, Napi::Env env) {
+bool SafeHttpParser::SafeParseHeaders(const std::string& data, Napi::Object& headers,
+                                      Napi::Env env, bool skipRequestLine) {
   try {
-    // Find headers section
-    size_t headersStart = data.find("\r\n");
-    if (headersStart == std::string::npos) {
-      headersStart = data.find("\n");
-      if (headersStart == std::string::npos) {
-        return true; // No headers is valid
+    // Where the header block begins. For a full request the request line
+    // precedes the headers and must be skipped; for headers-only input
+    // parsing must start at offset 0, otherwise the first header is dropped.
+    size_t headersStart = 0;
+    if (skipRequestLine) {
+      size_t firstLineEnd = data.find("\r\n");
+      if (firstLineEnd == std::string::npos) {
+        firstLineEnd = data.find("\n");
+        if (firstLineEnd == std::string::npos) {
+          return true; // No headers is valid
+        }
+        headersStart = firstLineEnd + 1;
+      } else {
+        headersStart = firstLineEnd + 2;
       }
-      headersStart += 1;
-    } else {
-      headersStart += 2;
     }
 
     size_t headersEnd = data.find("\r\n\r\n", headersStart);
@@ -319,7 +326,7 @@ Napi::Value SafeHttpParser::ParseHeaders(const Napi::CallbackInfo& info) {
   std::string headersData = info[0].As<Napi::String>().Utf8Value();
   Napi::Object headers = Napi::Object::New(env);
 
-  if (SafeParseHeaders(headersData, headers, env)) {
+  if (SafeParseHeaders(headersData, headers, env, false)) {
     return headers;
   } else {
     Napi::Error::New(env, "Failed to parse headers").ThrowAsJavaScriptException();

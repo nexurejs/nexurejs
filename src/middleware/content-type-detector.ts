@@ -8,6 +8,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { PassThrough, Transform } from 'node:stream';
 import { getContentType, createJsonTransformer, createTextTransformer } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 interface ContentTypeOptions {
   /** Whether to automatically transform content based on type */
@@ -96,7 +97,7 @@ function setupJsonTransformers(
       return data;
     },
     processError: (err: Error) => {
-      Logger.warn('JSON parse error:', err.message);
+      logger.warn('JSON parse error:', err.message);
     }
   });
 
@@ -178,15 +179,13 @@ function setupFormTransformers(
   // Create text transformer that will be used to parse form data
   const textTransformer = createTextTransformer({
     processText: (text: string) => {
-      // Parse form data
+      // Parse form data. URLSearchParams decodes '+' as a space and splits
+      // only on the first '=', so values may themselves contain '='.
       const formData: Record<string, string> = {};
-      text.split('&').forEach(pair => {
-        if (!pair) return;
-        const [key, value] = pair.split('=').map(decodeURIComponent);
-        if (key) {
-          formData[key] = value || '';
-        }
-      });
+      const formParams = new URLSearchParams(text);
+      for (const [key, value] of formParams.entries()) {
+        formData[key] = value;
+      }
 
       // Store on request
       req.formBody = formData;

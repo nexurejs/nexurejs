@@ -245,11 +245,12 @@ export class AdaptiveTimeoutManager {
    */
   private updateSystemLoad(): void {
     try {
-      // Get event loop lag as a proxy for system load
+      // Measure event-loop lag as a proxy for system load. A setTimeout(…, 0)
+      // callback is delayed when the loop is congested; process.nextTick runs
+      // before the loop continues and therefore cannot measure lag at all.
       const startTime = Date.now();
 
-      // Use nextTick to measure event loop lag
-      process.nextTick(() => {
+      setTimeout(() => {
         const lag = Date.now() - startTime;
 
         // Convert lag to a load factor
@@ -268,7 +269,7 @@ export class AdaptiveTimeoutManager {
         } else {
           this.loadFactor = 3.0;
         }
-      });
+      }, 0);
     } catch (_err) {
       // Fallback if measurement fails
       this.loadFactor = 1.2; // Conservative 20% increase

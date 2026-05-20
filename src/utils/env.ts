@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { Logger } from './logger.js';
 
 /**
  * Environment variable options
@@ -47,7 +48,7 @@ export class Env {
    */
   constructor(private options: EnvOptions = {}) {
     this.logger = new Logger({
-      enabled: options.debug === true
+      console: options.debug === true
     });
   }
 

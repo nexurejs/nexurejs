@@ -7,6 +7,7 @@ import { Worker } from 'node:worker_threads';
 import { cpus } from 'node:os';
 import { EventEmitter } from 'node:events';
 import { v8Optimizer } from '../utils/v8-optimizer.js';
+import { Logger } from '../utils/logger.js';
 
 /**
  * Worker task
@@ -110,10 +111,13 @@ export class WorkerPool extends EventEmitter {
     const workerCount = options.numWorkers || cpus().length;
     
     // Initialize properties with their final types for V8 hidden class optimization
-    this.workers = v8Optimizer.createFastArray<Worker>(workerCount);
+    // Plain arrays: createFastArray() PRE-FILLS its slots with placeholder
+    // values, so push()ing onto one leaves the array padded with garbage
+    // (numbers / empty objects that later get mistaken for workers or tasks).
+    this.workers = [];
     this.workerScript = options.workerScript;
     this.workerData = options.workerData || v8Optimizer.createInlinePropertiesObject({});
-    this.taskQueue = v8Optimizer.createFastArray<WorkerTask>(50, 'object');
+    this.taskQueue = [];
     this.taskCallbacks = new Map();
     this.taskTimeout = options.taskTimeout || 30000;
     this.logger = new Logger();
@@ -373,8 +377,8 @@ export class WorkerPool extends EventEmitter {
     // Wait for all workers to terminate with stable promise handling
     await Promise.all(terminationPromises);
 
-    // Clear the task queue with stable object type
-    this.taskQueue = v8Optimizer.createFastArray<WorkerTask>(0, 'object');
+    // Clear the task queue
+    this.taskQueue = [];
 
     // Create error message once for reuse
     const shutdownError = new Error('Worker pool is shutting down');

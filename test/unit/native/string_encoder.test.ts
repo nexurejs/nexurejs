@@ -149,14 +149,12 @@ describe('StringEncoder Native Module', () => {
       // Get metrics
       const metrics = encoder.getMetrics();
 
-      // Verify metrics
+      // Verify metrics against the native StringEncoder's actual shape:
+      // { totalEncodeCount, totalDecodeCount, totalTimeMs }.
       expect(metrics).toBeDefined();
-      expect(metrics.totalEncodingOperations).toBeGreaterThanOrEqual(2);
-      expect(metrics.totalDecodingOperations).toBeGreaterThanOrEqual(2);
-      expect(metrics.base64EncodingCount).toBeGreaterThanOrEqual(1);
-      expect(metrics.base64DecodingCount).toBeGreaterThanOrEqual(1);
-      expect(metrics.urlEncodingCount).toBeGreaterThanOrEqual(1);
-      expect(metrics.urlDecodingCount).toBeGreaterThanOrEqual(1);
+      expect(metrics.totalEncodeCount).toBeGreaterThanOrEqual(2);
+      expect(metrics.totalDecodeCount).toBeGreaterThanOrEqual(2);
+      expect(typeof metrics.totalTimeMs).toBe('number');
     });
 
     test('should reset metrics', () => {
@@ -173,8 +171,8 @@ describe('StringEncoder Native Module', () => {
       const metrics = encoder.getMetrics();
 
       // Verify metrics are reset
-      expect(metrics.totalEncodingOperations).toBe(0);
-      expect(metrics.base64EncodingCount).toBe(0);
+      expect(metrics.totalEncodeCount).toBe(0);
+      expect(metrics.totalDecodeCount).toBe(0);
     });
   });
 

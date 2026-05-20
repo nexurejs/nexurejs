@@ -168,14 +168,14 @@ export function parseQueryString(queryString: string): Record<string, string> {
   // Remove leading ? if present
   const normalizedQuery = queryString.startsWith('?') ? queryString.slice(1) : queryString;
 
-  // Split the query string into key-value pairs
-  return normalizedQuery.split('&').reduce((params, param) => {
-    const [key, value] = param.split('=');
-    if (key) {
-      params[decodeURIComponent(key)] = value ? decodeURIComponent(value) : '';
-    }
-    return params;
-  }, {} as Record<string, string>);
+  // URLSearchParams decodes '+' as a space and splits only on the first '=',
+  // so values may themselves contain '='.
+  const params: Record<string, string> = {};
+  const searchParams = new URLSearchParams(normalizedQuery);
+  for (const [key, value] of searchParams.entries()) {
+    params[key] = value;
+  }
+  return params;
 }
 
 export function formatUrl(url: {

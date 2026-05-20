@@ -10,6 +10,7 @@
 
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpException, MiddlewareHandler } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Rate limiter options
@@ -28,8 +29,9 @@ export interface RateLimiterOptions {
   windowMs?: number;
 
   /**
-   * Token refill rate (tokens per second)
-   * @default calculated based on max and windowMs
+   * Token refill rate, in tokens per **millisecond** (this is how the bucket
+   * consumes it: tokensToAdd = elapsedMs * refillRate).
+   * @default max / windowMs
    */
   refillRate?: number;
 
@@ -632,7 +634,10 @@ export function createRateLimiterMiddleware(
       // Check rate limit
       const result = await config.bucketStore.check(key, {
         capacity: tierMax,
-        refillRate: tierRefillRate / 1000, // Convert to tokens per millisecond
+        // tierRefillRate is already tokens-per-millisecond (max / windowMs).
+        // The previous "/ 1000" double-converted it, making refill 1000x too
+        // slow — clients stayed locked out long past the configured window.
+        refillRate: tierRefillRate,
         tier
       });
 
@@ -664,7 +669,7 @@ export function createRateLimiterMiddleware(
       await next();
     } catch (error) {
       // If the rate limiter fails, allow the request
-      Logger.error('Rate limiter error:', error);
+      logger.error('Rate limiter error:', error);
       await next();
     }
   };

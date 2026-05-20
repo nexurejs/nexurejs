@@ -5,6 +5,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { MiddlewareHandler } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Content Security Policy directive types
@@ -224,14 +225,18 @@ export function createSecurityHeadersMiddleware(
 ): MiddlewareHandler {
   // Set content security policy
   let cspHeaderName = 'Content-Security-Policy';
-  const cspDirectives: CSPDirectives = DEFAULT_CSP_DIRECTIVES;
+  // Copy the defaults — this object is mutated per-instance (report-to /
+  // report-uri) and must never corrupt the shared DEFAULT_CSP_DIRECTIVES.
+  let cspDirectives: CSPDirectives = { ...DEFAULT_CSP_DIRECTIVES };
   let useNonce = true;
   let reportToConfig: any = null;
 
   // Process CSP options
   if (typeof options.contentSecurityPolicy === 'object') {
     const cspOptions: CSPOptions = options.contentSecurityPolicy;
-    const cspDirectives: CSPDirectives = cspOptions.directives || { 'default-src': ["'self'"] };
+    // Assign (do not redeclare) so the configured directives are actually used
+    // when the header is built; copy so the caller's object is not mutated.
+    cspDirectives = { ...(cspOptions.directives || { 'default-src': ["'self'"] }) };
 
     // Set nonce usage
     if (cspOptions.useNonce !== undefined) {
@@ -514,7 +519,7 @@ export function createCSPReportingMiddleware(
       const report = JSON.parse(body);
 
       // Log the report
-      Logger.warn('CSP Violation:', report);
+      logger.warn('CSP Violation:', report);
 
       // Call custom handler if provided
       if (handler) {
@@ -525,7 +530,7 @@ export function createCSPReportingMiddleware(
         res.end();
       }
     } catch (error) {
-      Logger.error('Error processing CSP report:', error);
+      logger.error('Error processing CSP report:', error);
       res.statusCode = 400;
       res.end('Bad Request');
     }

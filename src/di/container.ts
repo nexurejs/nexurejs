@@ -1,3 +1,5 @@
+import { getInjectionMetadata } from '../decorators/injection-decorators.js';
+
 /**
  * Dependency injection scope
  */
@@ -72,7 +74,9 @@ export class Container {
    */
   register(provider: any, options: ProviderOptions = {}): this {
     const token = options.token || provider;
-    const scope = options.scope || Scope.SINGLETON;
+    // Honor the scope declared via @Injectable(scope) when no explicit option
+    // is given; otherwise fall back to singleton.
+    const scope = options.scope || getInjectionMetadata(provider)?.scope || Scope.SINGLETON;
 
     this.providers.set(token, {
       token,
@@ -140,19 +144,30 @@ export class Container {
   private getInjectedParams(target: any): any[] {
     const metadata = getInjectionMetadata(target);
 
-    if (!metadata?.params) {
+    if (!metadata?.params || metadata.params.length === 0) {
       return [];
     }
 
-    return metadata.params.map((param: any) => {
+    // Place each resolved dependency at its declared parameter index.
+    // metadata.params is in decorator-application order (TypeScript applies
+    // parameter decorators last-parameter-first), NOT parameter index order,
+    // so a positional .map() here would swap the constructor arguments.
+    const maxIndex = metadata.params.reduce(
+      (max: number, param: any) => Math.max(max, param.index),
+      -1
+    );
+    const args = new Array(maxIndex + 1);
+
+    for (const param of metadata.params) {
       if (!param.type) {
         throw new Error(
           `Cannot inject parameter at index ${param.index} in ${target.name}: type not specified`
         );
       }
+      args[param.index] = this.resolve(param.type);
+    }
 
-      return this.resolve(param.type);
-    });
+    return args;
   }
 
   /**

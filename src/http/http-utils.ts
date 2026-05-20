@@ -132,7 +132,10 @@ export function bytes(val: string | number): number {
   }
 
   const num = parseFloat(match[1]!);
-  const unit = match[2]!;
+  // The regex accepts bare units (k, m, g, t) as well as their *b forms;
+  // normalize so '5k' is treated identically to '5kb'.
+  const unit = match[2]!.toLowerCase();
+  const normalizedUnit = unit.endsWith('b') ? unit : `${unit}b`;
 
   const multiplier: Record<string, number> = {
     b: 1,
@@ -142,7 +145,7 @@ export function bytes(val: string | number): number {
     tb: 1024 * 1024 * 1024 * 1024
   };
 
-  return Math.floor(num * (multiplier[unit.toLowerCase()] || 1));
+  return Math.floor(num * (multiplier[normalizedUnit] || 1));
 }
 
 /**
@@ -157,12 +160,12 @@ export function parseUrlEncodedText(str: string): Record<string, string> {
     return result;
   }
 
-  str.split('&').forEach(part => {
-    const [key, value] = part.split('=').map(decodeURIComponent);
-    if (key) {
-      result[key] = value || '';
-    }
-  });
+  // URLSearchParams decodes '+' as a space and splits only on the first '=',
+  // so values may themselves contain '='.
+  const params = new URLSearchParams(str);
+  for (const [key, value] of params.entries()) {
+    result[key] = value;
+  }
 
   return result;
 }

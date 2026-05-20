@@ -150,7 +150,9 @@ export class BufferPool {
         this.stats.reused++;
       }
 
-      return entry.buffer;
+      // A pooled buffer may be larger than requested — return a right-sized
+      // view so callers receive exactly `size` bytes, as documented.
+      return entry.buffer.length === size ? entry.buffer : entry.buffer.subarray(0, size);
     }
 
     // Create a new buffer if none found

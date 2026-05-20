@@ -9,6 +9,7 @@ import { Socket } from 'node:net';
 import { Http2SecureServer, constants, createSecureServer } from 'node:http2';
 import { Router } from '../routing/router.js';
 import { MiddlewareHandler } from '../middleware/middleware.js';
+import { Logger } from '../utils/logger.js';
 
 /**
  * HTTP/2 Server Options
@@ -114,6 +115,13 @@ class Http2ResponseAdapter extends ServerResponse {
       encodingOrCallback = undefined;
     }
 
+    // HTTP/2 requires respond() before a stream can be ended. Callers that set
+    // res.statusCode directly (the router's auto-responder) never call
+    // writeHead(), so emit the headers here if that has not happened yet.
+    if (!this.stream.headersSent) {
+      this.stream.respond({ ':status': this.statusCode || 200 });
+    }
+
     if (chunk) {
       this.stream.end(chunk, encodingOrCallback as BufferEncoding);
     } else {
@@ -172,8 +180,10 @@ export class Http2ServerAdapter {
     // Handle streams
     this.server.on('stream', this.handleStream.bind(this));
 
-    // Handle errors
-    this.server.on('error', this.handleError.bind(this));
+    // Handle server-level errors (no stream to respond to — log only).
+    this.server.on('error', (error: Error) => {
+      this.logger.error('HTTP/2 server error:', error);
+    });
   }
 
   /**
@@ -224,16 +234,26 @@ export class Http2ServerAdapter {
 
       await next();
     } catch (error) {
-      this.handleError(error);
+      // Respond to the stream so the request does not hang — logging alone
+      // would leave the client waiting indefinitely.
+      this.logger.error('HTTP/2 stream error:', error);
+      try {
+        if (!stream.headersSent && !stream.closed) {
+          const statusCode = (error as { statusCode?: number }).statusCode || 500;
+          stream.respond({ ':status': statusCode, 'content-type': 'application/json' });
+          stream.end(
+            JSON.stringify({
+              statusCode,
+              message: (error as Error).message || 'Internal Server Error'
+            })
+          );
+        } else if (!stream.closed) {
+          stream.end();
+        }
+      } catch {
+        // The stream is already torn down — nothing more can be done.
+      }
     }
-  }
-
-  /**
-   * Handle server error
-   * @param error Error object
-   */
-  private handleError(error: any): void {
-    this.logger.error('HTTP/2 server error:', error);
   }
 
   /**

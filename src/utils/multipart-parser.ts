@@ -18,6 +18,7 @@ import { extractBoundary } from '../http/http-utils.js';
 import { createOptimizedTransform } from '../utils/stream-optimizer.js';
 import { ensureDirectory, getTempFilePath, fileExists, deleteFile } from '../utils/file-utils.js';
 import type { BodyParserOptions } from '../http/body-parser.js';
+import { logger } from '../utils/logger.js';
 
 // States for the parser
 enum ParserState {
@@ -806,7 +807,7 @@ export class MultipartParser {
 
       return tempPath;
     } catch (err) {
-      Logger.error(
+      logger.error(
         'Error saving temporary file:',
         err instanceof Error ? err.message : String(err)
       );
@@ -828,7 +829,7 @@ export class MultipartParser {
           }
         } catch (error) {
           // Ignore cleanup errors
-          Logger.debug(
+          logger.debug(
             'Error removing temporary file:',
             error instanceof Error ? error.message : String(error)
           );

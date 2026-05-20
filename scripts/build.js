@@ -1526,10 +1526,9 @@ async function runUnifiedBuild(options = {}) {
       console.log(`${Colors.YELLOW}Skipping Docker steps${Colors.RESET}`);
     }
 
-    // 7. Generate CI workflow files
-    console.log(`${Colors.CYAN}Step 7: Generating CI workflow files...${Colors.RESET}`);
-    generateCIWorkflows();
-    buildStatus.ciCreated = true;
+    // GitHub Actions workflows (.github/workflows/ci.yml, release.yml,
+    // benchmark.yml) are hand-maintained source files. They are intentionally
+    // NOT generated here — a build script must not overwrite CI config.
 
     // Final summary
     const endTime = performance.now();
@@ -1545,7 +1544,6 @@ async function runUnifiedBuild(options = {}) {
     console.log(`${Colors.BOLD}Current platform build:${Colors.RESET} ${buildStatus.current ? `${Colors.GREEN}Success` : `${Colors.RED}Failed`}${Colors.RESET}`);
     console.log(`${Colors.BOLD}Build scripts created:${Colors.RESET} ${buildStatus.scriptsCreated ? `${Colors.GREEN}Yes` : `${Colors.RED}No`}${Colors.RESET}`);
     console.log(`${Colors.BOLD}Docker support:${Colors.RESET} ${buildStatus.docker ? `${Colors.GREEN}Available` : `${Colors.YELLOW}Not available`}${Colors.RESET}`);
-    console.log(`${Colors.BOLD}GitHub Actions workflow:${Colors.RESET} ${buildStatus.ciCreated ? `${Colors.GREEN}Created` : `${Colors.RED}Failed`}${Colors.RESET}`);
 
     // All done!
     console.log(`\n${Colors.GREEN}${Colors.BOLD}Unified build process completed!${Colors.RESET}`);

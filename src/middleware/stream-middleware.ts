@@ -512,27 +512,14 @@ function createFormTransformer(
 
     flush(callback: TransformCallback): void {
       try {
-        // Parse form data
+        // Parse URL-encoded form data. URLSearchParams decodes '+' as space
+        // and only splits on the first '=', so values may contain '='.
         if (buffer.length > 0) {
-          const text = buffer.toString('utf8');
           const formData: Record<string, string> = {};
-
-          // Parse URL encoded form data
-          text.split('&').forEach(pair => {
-            if (!pair) return;
-
-            try {
-              const [key, value] = pair.split('=').map(decodeURIComponent);
-              if (key) {
-                formData[key] = value || '';
-              }
-            } catch (err) {
-              logger.warn(
-                'Error parsing form data:',
-                err instanceof Error ? err.message : String(err)
-              );
-            }
-          });
+          const params = new URLSearchParams(buffer.toString('utf8'));
+          for (const [key, value] of params.entries()) {
+            formData[key] = value;
+          }
 
           const processed = processFunction(formData);
           this.push(processed);
@@ -635,6 +622,8 @@ export class BufferCollector extends Writable {
     callback: (error?: Error | null) => void
   ): void {
     this.chunks.push(chunk);
+    // Invalidate the cached buffer so getBuffer() reflects newly written data.
+    this._buffer = null;
     callback();
   }
 

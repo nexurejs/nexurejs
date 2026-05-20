@@ -2,7 +2,7 @@
  * Unit tests for the native JsonProcessor
  */
 
-import { describe, test, expect, beforeAll } from '@jest/globals';
+import { describe, test, expect, beforeAll } from 'vitest';
 import { JsonProcessor, getNativeModuleStatus } from '../../../src/native/index.js';
 
 describe('Native JsonProcessor', () => {

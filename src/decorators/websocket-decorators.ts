@@ -47,15 +47,18 @@ const WS_AUTH_HANDLER_KEY = Symbol('ws:auth:handler');
  * @param event The WebSocket event to handle
  */
 export function OnWsEvent(event: string): MethodDecorator {
-  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const handlers: WebSocketHandlerMetadata[] = Reflect.getMetadata(WS_HANDLERS_KEY, target.constructor) || [];
+  return (target: any, _propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    // Use getOwnMetadata (not getMetadata) and build a fresh array. getMetadata
+    // walks the prototype chain, so decorating a subclass would otherwise
+    // push into — and corrupt — the parent class's shared handler array.
+    const ownHandlers: WebSocketHandlerMetadata[] =
+      Reflect.getOwnMetadata(WS_HANDLERS_KEY, target.constructor) || [];
 
-    handlers.push({
-      event,
-      handler: descriptor.value
-    });
-
-    Reflect.defineMetadata(WS_HANDLERS_KEY, handlers, target.constructor);
+    Reflect.defineMetadata(
+      WS_HANDLERS_KEY,
+      [...ownHandlers, { event, handler: descriptor.value }],
+      target.constructor
+    );
     return descriptor;
   };
 }

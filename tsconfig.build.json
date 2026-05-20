@@ -1,0 +1,27 @@
+{
+  // Build config for the publishable package. Unlike the root tsconfig.json
+  // (which targets the whole repo for type-checking and emits to dist/build/),
+  // this compiles ONLY src/ and emits the published layout straight to dist/:
+  //   src/index.ts        -> dist/index.js + dist/index.d.ts
+  //   src/http/index.ts   -> dist/http/index.js
+  // Used by `npm run build:dist` and the release pipeline.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "benchmarks",
+    "src/framework",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts"
+  ]
+}

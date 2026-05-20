@@ -6,6 +6,9 @@
  * falling back to the JS implementation when needed.
  */
 
+import { logger } from '../utils/logger.js';
+import { NativeJsonProcessor } from '../types/index.js';
+
 /**
  * JSON processing options
  */
@@ -48,7 +51,7 @@ export class JsonProcessor {
         this.useNative = false;
       }
     } catch (error) {
-      Logger.error('Error initializing native JSON processor:', error);
+      logger.error('Error initializing native JSON processor:', error);
       this.useNative = false;
     }
   }

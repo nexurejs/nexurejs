@@ -71,6 +71,15 @@ export function createErrorHandler(options: ErrorHandlerOptions = {}): ErrorHand
   const config = { ...defaultOptions, ...options };
 
   return async (err: Error, req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    // If the response has already started, an error body cannot be written —
+    // just ensure the socket is closed instead of throwing again.
+    if (res.headersSent || res.writableEnded) {
+      if (!res.writableEnded) {
+        res.end();
+      }
+      return;
+    }
+
     // Convert to HttpError if it's not already
     const httpError: HttpError = isHttpError(err)
       ? (err as HttpError)

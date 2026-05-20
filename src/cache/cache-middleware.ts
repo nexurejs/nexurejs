@@ -4,6 +4,7 @@
 
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { CacheOptions, CacheManager, MiddlewareHandler } from '../types/index.js';
+import { crypto } from '../utils/crypto-service.js';
 
 /**
  * HTTP cache options
@@ -124,11 +125,12 @@ export function createCacheMiddleware(
         body.push(Buffer.from(chunk));
       }
 
-      // Store the response in cache
-      if (cacheKey && body.length > 0) {
+      // Store the response in cache — only successful (2xx) responses, so a
+      // transient error is not replayed to every client for the whole TTL.
+      const statusCode = res.statusCode;
+      if (cacheKey && body.length > 0 && statusCode >= 200 && statusCode < 300) {
         const responseBody = Buffer.concat(body).toString();
         const headers = res.getHeaders();
-        const statusCode = res.statusCode;
 
         cacheManager.set(
           cacheKey,
@@ -194,8 +196,10 @@ export function createCacheControlMiddleware(
 
         const responseBody = Buffer.concat(body);
 
-        // Generate a simple ETag based on content length and last modified time
-        const etag = `W/"${responseBody.length}-${Date.now()}"`;
+        // Derive the ETag from the response CONTENT. Using Date.now() (as the
+        // previous implementation did) makes every ETag unique, so a client's
+        // If-None-Match never matches and 304 Not Modified is never returned.
+        const etag = `W/"${responseBody.length}-${crypto.hash(responseBody).slice(0, 27)}"`;
         res.setHeader('ETag', etag);
 
         // Check if the client sent an If-None-Match header

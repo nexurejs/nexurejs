@@ -55,28 +55,29 @@ export function getInjectionMetadata(target: any): InjectionMetadata | undefined
  * @param target The target to set metadata on
  */
 function setInjectionMetadata(metadata: Partial<InjectionMetadata>, target: any): void {
-  const existingMetadata = getInjectionMetadata(target) || {};
+  // Read OWN metadata only — getInjectionMetadata() walks the prototype chain,
+  // so mutating what it returns would corrupt a parent class's injection
+  // metadata when a subclass is decorated. Build a fresh object instead.
+  const existing: InjectionMetadata =
+    Reflect.getOwnMetadata(INJECTION_METADATA_KEY, target) || {};
+  const merged: InjectionMetadata = { ...existing };
 
-  // Merge params
   if (metadata.params) {
-    const params = [...(existingMetadata.params || []), ...metadata.params];
-    existingMetadata.params = params;
+    merged.params = [...(existing.params || []), ...metadata.params];
   }
 
-  // Merge properties
   if (metadata.properties) {
-    existingMetadata.properties = {
-      ...(existingMetadata.properties || {}),
+    merged.properties = {
+      ...(existing.properties || {}),
       ...metadata.properties
     };
   }
 
-  // Set scope
   if (metadata.scope) {
-    existingMetadata.scope = metadata.scope;
+    merged.scope = metadata.scope;
   }
 
-  Reflect.defineMetadata(INJECTION_METADATA_KEY, existingMetadata, target);
+  Reflect.defineMetadata(INJECTION_METADATA_KEY, merged, target);
 }
 
 /**

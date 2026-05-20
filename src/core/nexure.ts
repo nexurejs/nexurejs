@@ -5,11 +5,18 @@ import { Container } from '../di/container.js';
 import {
   getNativeModuleStatus,
   configureNativeModules,
+  getNativeModuleMetrics,
   WebSocketServer,
   WebSocketServerOptions
 } from '../native/index.js';
-import { setUseNativeByDefault } from '../utils/native-bindings.js';
+import { setUseNativeByDefault, getUseNativeByDefault } from '../utils/native-bindings.js';
 import { v8Optimizer } from '../utils/v8-optimizer.js';
+import { Logger } from '../utils/logger.js';
+import {
+  isWebSocketController,
+  getWebSocketHandlers,
+  getWebSocketAuthHandler
+} from '../decorators/websocket-decorators.js';
 
 export interface NexureOptions {
   /**
@@ -303,12 +310,14 @@ export class Nexure {
    * @param res The server response
    */
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const startTime = process.hrtime();
+    // Only measure timing when logging is enabled — avoids a per-request
+    // hrtime() call and log-string build on the hot path in production.
+    const startTime = this.options.logging ? process.hrtime() : null;
 
     try {
-      // Set default headers
+      // Set default headers. Content-Type is chosen by the route responder
+      // from the handler's return value, so it is not forced here.
       res.setHeader('X-Powered-By', 'NexureJS');
-      res.setHeader('Content-Type', 'application/json');
 
       // Run middleware pipeline
       let middlewareIndex = 0;
@@ -326,10 +335,12 @@ export class Nexure {
     } catch (error) {
       this.handleError(error, req, res);
     } finally {
-      // Log request completion
-      const [seconds, nanoseconds] = process.hrtime(startTime);
-      const duration = seconds * 1000 + nanoseconds / 1000000;
-      this.logger.info(`${req.method} ${req.url} - ${res.statusCode} - ${duration.toFixed(2)}ms`);
+      // Log request completion (only when logging is enabled)
+      if (startTime) {
+        const [seconds, nanoseconds] = process.hrtime(startTime);
+        const duration = seconds * 1000 + nanoseconds / 1000000;
+        this.logger.info(`${req.method} ${req.url} - ${res.statusCode} - ${duration.toFixed(2)}ms`);
+      }
     }
   }
 
@@ -347,11 +358,23 @@ export class Nexure {
       return this.customErrorHandler(error, req, res);
     }
 
+    // If the response has already started, an error body cannot be written —
+    // just ensure the socket is closed instead of throwing again.
+    if (res.headersSent || res.writableEnded) {
+      if (!res.writableEnded) {
+        res.end();
+      }
+      return;
+    }
+
     // Default error handling
     const statusCode = error.statusCode || 500;
     const message = error.message || 'Internal Server Error';
 
     res.statusCode = statusCode;
+    if (!res.hasHeader('Content-Type')) {
+      res.setHeader('Content-Type', 'application/json');
+    }
     res.end(
       JSON.stringify(
         {
@@ -477,6 +500,15 @@ export class Nexure {
     
     // Reset V8 optimizer
     v8Optimizer.reset();
+  }
+
+  /**
+   * Gracefully stop the HTTP server and release framework resources.
+   * @param callback Invoked once the server has stopped accepting connections
+   */
+  close(callback?: (err?: Error) => void): void {
+    this.server.close(callback);
+    this.cleanup();
   }
   
   /**

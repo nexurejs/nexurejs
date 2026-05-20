@@ -13,7 +13,12 @@ export default [
       'node_modules/**',
       '**/*.d.ts',
       'examples/**',
-      'benchmarks/**'
+      'benchmarks/**',
+      // Quarantined from tsconfig (incomplete rewrite) — see CLAUDE.md
+      'src/framework/**',
+      'test/comprehensive/framework.test.ts',
+      // Config files are not part of the typed source project
+      '**/*.config.ts'
     ]
   },
 

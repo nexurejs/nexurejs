@@ -6,6 +6,10 @@
  * falling back to the JS implementation when needed.
  */
 
+import { logger } from '../utils/logger.js';
+import { Validator } from '../validation/validator.js';
+import { NativeSchemaValidator } from '../types/index.js';
+
 /**
  * Validation error
  */
@@ -83,16 +87,26 @@ export class SchemaValidator {
   constructor() {
     try {
       this.nativeValidator = new NativeSchemaValidator();
-      // Test if native validator is usable
-      const testResult = this.nativeValidator.validate({ type: 'object' }, {});
-      if (testResult && typeof testResult.valid === 'boolean') {
+      // Verify the native validator actually enforces rules. A real validator
+      // must ACCEPT valid input and REJECT a missing required value; a stub
+      // that always returns { valid: true } fails this probe, so we fall back
+      // to the (working) JS validator.
+      const accepts = this.nativeValidator.validate(
+        { type: 'string', required: true },
+        'present'
+      );
+      const rejects = this.nativeValidator.validate(
+        { type: 'string', required: true },
+        undefined
+      );
+      if (accepts?.valid === true && rejects?.valid === false) {
         this.useNative = true;
       } else {
         this.useNative = false;
         this.jsValidator = new Validator();
       }
     } catch (error) {
-      Logger.error('Error creating schema validator:', error);
+      logger.error('Error creating schema validator:', error);
       this.useNative = false;
       this.jsValidator = new Validator();
     }
@@ -244,22 +258,31 @@ export class SchemaValidator {
   private validateWithJs(
     schema: any,
     data: any,
-    options?: SchemaValidationOptions
+    _options?: SchemaValidationOptions
   ): ValidationResult {
-    const { stripUnknown = false, allowUnknown = true } = options || {};
-
     if (!this.jsValidator) {
       throw new Error('JS validator not initialized');
     }
 
-    // Convert schema to ValidationSchema format expected by JS validator
-    const validationSchema = this.convertToValidationSchema(schema);
+    // Treat the schema as a map of field name -> field rules, and validate
+    // each field of the data object against its rules. (Previously this only
+    // inspected top-level schema keys, so a field-map schema validated nothing
+    // and every object was reported as valid.)
+    const errors: ValidationError[] = [];
 
-    // Validate
-    return this.jsValidator.validate(data, validationSchema, {
-      stripUnknown,
-      allowUnknown
-    });
+    for (const [field, fieldRules] of Object.entries(schema as Record<string, any>)) {
+      if (!fieldRules || typeof fieldRules !== 'object') {
+        continue;
+      }
+      const fieldSchema = this.convertToValidationSchema(fieldRules, field);
+      const fieldValue = data == null ? undefined : data[field];
+      const fieldResult = this.jsValidator.validate(fieldValue, fieldSchema);
+      if (!fieldResult.valid) {
+        errors.push(...fieldResult.errors);
+      }
+    }
+
+    return { valid: errors.length === 0, errors, data };
   }
 
   /**
@@ -284,12 +307,16 @@ export class SchemaValidator {
       result.format = schema.format;
     }
 
-    if (schema.minimum) {
-      result.min = schema.minimum;
+    // Accept both shorthand (min/max) and JSON-Schema (minimum/maximum) names;
+    // use !== undefined so a bound of 0 is not dropped.
+    const min = schema.min ?? schema.minimum;
+    if (min !== undefined) {
+      result.min = min;
     }
 
-    if (schema.maximum) {
-      result.max = schema.maximum;
+    const max = schema.max ?? schema.maximum;
+    if (max !== undefined) {
+      result.max = max;
     }
 
     return result;

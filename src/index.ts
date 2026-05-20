@@ -1,11 +1,12 @@
 /**
  * Nexure.js API
  *
- * Main exports for the Nexure.js framework
+ * Main exports for the Nexure.js framework.
+ *
+ * This is a pure library entry point: importing it has NO side effects —
+ * no console output, no argv parsing, no process.exit(). CLI behavior
+ * lives in bin/nexure.js.
  */
-
-// Application startup message
-console.log('🚀 Nexure.js started - High-performance Node.js framework');
 
 // Import from native modules - they handle fallback internally
 import {
@@ -23,14 +24,6 @@ import {
   resetAllPerformanceMetrics,
   getNativeModuleMetrics
 } from './native/index.js';
-
-import { flags, displayHelp, displayVersion } from './cli-flags.js';
-
-// Process flags
-if (flags.help) {
-  displayHelp();
-  process.exit(0);
-}
 
 // Create URL parsing function exports for convenience
 const urlParserInstance = new UrlParser();
@@ -181,20 +174,3 @@ export function getNativeInfo(): {
   };
 }
 
-// Process version flag
-if (flags.version) {
-  displayVersion(version);
-  process.exit(0);
-}
-
-// Log native module status if verbose
-if (flags.verbose) {
-  const info = getNativeInfo();
-  console.log(`NexureJS v${info.version} - Native modules ${info.isNative ? 'enabled' : 'disabled'}`);
-  if (info.isNative) {
-    console.log('Available native modules:');
-    Object.entries(info.nativeModules)
-      .filter(([_, enabled]) => enabled)
-      .forEach(([name]) => console.log(`  ✓ ${name}`));
-    }
-}

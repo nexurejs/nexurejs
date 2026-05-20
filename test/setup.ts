@@ -1,9 +1,10 @@
+/// <reference types="vitest/globals" />
 /**
  * Global test setup for NexureJS
  * This file runs before all tests
  */
 
-import { jest, beforeAll, afterAll } from '@jest/globals';
+import { vi, beforeAll, afterAll } from 'vitest';
 import { HttpParser, RadixRouter, JsonProcessor } from '../src/native/index.js';
 
 // Set test environment variables
@@ -57,12 +58,12 @@ globalThis.mockRequest = (options = {}) => {
 
 globalThis.mockResponse = () => {
   const res: any = {};
-  res.status = jest.fn().mockReturnValue(res);
-  res.json = jest.fn().mockReturnValue(res);
-  res.send = jest.fn().mockReturnValue(res);
-  res.end = jest.fn().mockReturnValue(res);
-  res.setHeader = jest.fn().mockReturnValue(res);
-  res.getHeader = jest.fn().mockReturnValue('');
+  res.status = vi.fn().mockReturnValue(res);
+  res.json = vi.fn().mockReturnValue(res);
+  res.send = vi.fn().mockReturnValue(res);
+  res.end = vi.fn().mockReturnValue(res);
+  res.setHeader = vi.fn().mockReturnValue(res);
+  res.getHeader = vi.fn().mockReturnValue('');
   res.headersSent = false;
   return res;
 };

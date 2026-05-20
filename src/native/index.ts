@@ -14,6 +14,8 @@ import { createRequire } from 'node:module';
 import { loadNativeBinding as safeLoadNativeBinding } from './loader.js';
 import { JsHttpParser } from '../http/index.js';
 import { JsRadixRouter } from '../routing/js-router.js';
+import { HttpMethod } from '../http/http-method.js';
+import { HTTP_LIMITS } from '../http/constants.js';
 import type {
   HttpParseResult,
   NativeHttpParser,
@@ -580,6 +582,17 @@ export class HttpParser implements NativeHttpParser {
    * @returns Parsed HTTP request
    */
   parse(buffer: Buffer): HttpParseResult {
+    // The wrapper owns the input/output contract so the native and JS backends
+    // are interchangeable: validate the input here (the native parser reports a
+    // generic "Invalid request data size" instead of these specific errors),
+    // then normalize the result so both backends yield the same shape.
+    if (buffer.length === 0) {
+      throw new Error('Empty request');
+    }
+    if (buffer.length > HTTP_LIMITS.MAX_BODY_SIZE) {
+      throw new Error('Request too large');
+    }
+
     const start = performance.now();
     let result: HttpParseResult;
 
@@ -595,6 +608,32 @@ export class HttpParser implements NativeHttpParser {
       throw new Error('No HTTP parser implementation available');
     }
 
+    return HttpParser.normalizeResult(result, buffer);
+  }
+
+  /**
+   * Normalize a parser result so the native and JS backends present the same
+   * shape: numeric `versionMajor`/`versionMinor` and an extracted `body`. A
+   * request whose version is not a valid `HTTP/x.y` token is rejected as
+   * malformed — the native parser otherwise accepts any version token.
+   */
+  private static normalizeResult(result: any, buffer: Buffer): HttpParseResult {
+    if (!result || typeof result !== 'object') {
+      throw new Error('Malformed request');
+    }
+    if (result.versionMajor === undefined || result.versionMinor === undefined) {
+      const version = String(result.version ?? '');
+      const match = version.match(/^HTTP\/(\d+)\.(\d+)$/);
+      if (!match) {
+        throw new Error('Malformed request: invalid HTTP version');
+      }
+      result.versionMajor = Number(match[1]);
+      result.versionMinor = Number(match[2]);
+    }
+    if (result.body === undefined) {
+      const separator = buffer.indexOf('\r\n\r\n');
+      result.body = separator >= 0 ? buffer.subarray(separator + 4) : Buffer.alloc(0);
+    }
     return result;
   }
 
@@ -604,8 +643,15 @@ export class HttpParser implements NativeHttpParser {
    * @returns Parsed headers
    */
   parseHeaders(buffer: Buffer): Record<string, string> {
+    if (buffer.length === 0) {
+      throw new Error('Empty headers');
+    }
     if (this.useNative && this.parser) {
-      return this.parser.parseHeaders(buffer);
+      // The native parser requires a string argument; the JS fallback accepts
+      // a Buffer. Normalize so both backends present the same contract.
+      // HTTP header bytes are latin1 (ISO-8859-1), matching Node's own parser.
+      const input = Buffer.isBuffer(buffer) ? buffer.toString('latin1') : buffer;
+      return this.parser.parseHeaders(input);
     } else if (this.jsParser) {
       return this.jsParser.parseHeaders(buffer);
     }
@@ -619,6 +665,12 @@ export class HttpParser implements NativeHttpParser {
    * @returns Parsed body
    */
   parseBody(buffer: Buffer, contentLength: number): Buffer {
+    if (buffer.length === 0) {
+      throw new Error('Empty body');
+    }
+    if (buffer.length < contentLength) {
+      throw new Error('Incomplete request body');
+    }
     if (this.useNative && this.parser) {
       return this.parser.parseBody(buffer, { contentLength });
     } else if (this.jsParser) {
@@ -1009,18 +1061,29 @@ export class UrlParser {
       UrlParser.nativeParseCount++;
       return result;
     } else {
-      // Fallback to URL API
+      // Fallback to the WHATWG URL API. Parse as an absolute URL first; if
+      // that fails, retry against a synthetic base so relative URLs
+      // ("/path?q=1") still yield pathname/search/hash instead of nothing.
       const start = performance.now();
       try {
-        const parsedUrl = new URL(url);
+        let parsedUrl: URL;
+        let relative = false;
+        try {
+          parsedUrl = new URL(url);
+        } catch {
+          parsedUrl = new URL(url, 'http://localhost');
+          relative = true;
+        }
         const result = {
-          protocol: parsedUrl.protocol.replace(/:$/, ''),
+          protocol: relative ? '' : parsedUrl.protocol.replace(/:$/, ''),
           auth:
-            parsedUrl.username && parsedUrl.password
-              ? `${parsedUrl.username}:${parsedUrl.password}`
-              : parsedUrl.username || '',
-          hostname: parsedUrl.hostname,
-          port: parsedUrl.port,
+            relative
+              ? ''
+              : parsedUrl.username && parsedUrl.password
+                ? `${parsedUrl.username}:${parsedUrl.password}`
+                : parsedUrl.username || '',
+          hostname: relative ? '' : parsedUrl.hostname,
+          port: relative ? '' : parsedUrl.port,
           pathname: parsedUrl.pathname,
           search: parsedUrl.search.replace(/^\?/, ''),
           hash: parsedUrl.hash.replace(/^#/, '')
@@ -1067,6 +1130,23 @@ export class UrlParser {
       UrlParser.jsParseCount++;
       return params;
     }
+  }
+
+  /**
+   * Format an object into an application/x-www-form-urlencoded query string —
+   * the inverse of parseQueryString. Keys and values are percent-encoded.
+   */
+  formatQueryString(params: Record<string, unknown>): string {
+    if (this.useNative) {
+      return this.parser.formatQueryString(params);
+    }
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined) {
+        search.append(key, String(value));
+      }
+    }
+    return search.toString();
   }
 
   // Performance metrics

@@ -97,7 +97,7 @@ function updateVersion(newVersion) {
 async function updateChangelog(newVersion, isCiMode = false) {
   console.log(`${colors.blue}Updating CHANGELOG.md...${colors.reset}`);
 
-  const changelogPath = path.join(process.cwd(), 'docs', 'CHANGELOG.md');
+  const changelogPath = path.join(process.cwd(), 'CHANGELOG.md');
   let changelog = fs.readFileSync(changelogPath, 'utf-8');
 
   // Get the date in YYYY-MM-DD format
@@ -125,7 +125,7 @@ async function updateChangelog(newVersion, isCiMode = false) {
 // Helper function to commit changes
 function commitChanges(version) {
   console.log(`${colors.blue}Committing changes...${colors.reset}`);
-  exec('git add package.json package-lock.json docs/CHANGELOG.md');
+  exec('git add package.json package-lock.json CHANGELOG.md');
   exec(`git commit -m "chore: release v${version}"`);
 }
 
@@ -312,7 +312,7 @@ async function createGitHubRelease(version) {
   const [, owner, repo] = repoMatch;
 
   // Extract release notes from CHANGELOG.md
-  const changelog = fs.readFileSync(path.join(process.cwd(), 'docs', 'CHANGELOG.md'), 'utf-8');
+  const changelog = fs.readFileSync(path.join(process.cwd(), 'CHANGELOG.md'), 'utf-8');
   const releaseNotesRegex = new RegExp(`## \\[${version}\\].*?\\n(.*?)\\n## \\[`, 's');
   const match = changelog.match(releaseNotesRegex);
 
@@ -544,17 +544,14 @@ async function main() {
 
     console.log(`${colors.green}Release v${newVersion} completed!${colors.reset}`);
 
-    if (!isCiMode) {
-      const shouldPublish = await prompt(`${colors.yellow}Do you want to publish to npm? (y/n): ${colors.reset}`);
-      if (shouldPublish.toLowerCase() === 'y') {
-        await publishToNpm();
-      }
-
-      rl.close();
-    } else {
-      // In CI mode, we'll let the GitHub Action handle npm publishing
-      console.log(`${colors.blue}CI mode: GitHub Action will handle npm publishing${colors.reset}`);
-    }
+    // Publishing is owned by the Release workflow, not this script: pushing the
+    // tag above is what triggers it. Doing `npm publish` here as well would
+    // cause a duplicate-publish failure.
+    console.log(
+      `${colors.blue}Tag v${newVersion} pushed. The Release workflow ` +
+      `(.github/workflows/release.yml) will build, verify, and publish to npm.${colors.reset}`
+    );
+    rl.close();
   } catch (error) {
     console.error(`${colors.red}Error:${colors.reset}`, error.message);
     process.exit(1);
@@ -581,7 +578,9 @@ async function getPreReleaseId(currentVersion, isCiMode = false) {
  * Calculate new version in CI mode or interactively
  */
 async function calculateNewVersion(currentVersion, versionType, isCiMode = false) {
-  const [major, minor, patch] = currentVersion.split('.').map(Number);
+  // Strip any pre-release suffix ("1.3.0-phase2" -> "1.3.0") so a stable
+  // release can be cut from a pre-release base without producing NaN.
+  const [major, minor, patch] = currentVersion.split('-')[0].split('.').map(Number);
 
   if (isCiMode) {
     switch (versionType) {
@@ -621,7 +620,7 @@ async function bumpPreReleaseVersion(currentVersion, preId, isCiMode = false) {
     return currentVersion.replace(preRegex, `-${preId}.${preNum + 1}`);
   } else {
     // Create a new pre-release based on the current version
-    const [major, minor, patch] = currentVersion.split('.').map(Number);
+    const [major, minor, patch] = currentVersion.split('-')[0].split('.').map(Number);
 
     let newVersion;
     if (isCiMode) {

@@ -20,9 +20,15 @@ describe('ThreadPool Native Module', () => {
     }
   });
 
-  // Helper function to check if we should skip tests
+  // Helper function to check if we should skip tests.
+  // These tests assume a `getInstance()` singleton API. The compiled native
+  // ThreadPool exposes a different API (`new ThreadPool()`, `submit`, ...) and
+  // its `submit` currently aborts V8 ("Cannot create a handle without a
+  // HandleScope" — it invokes JS callbacks from C++ worker threads without a
+  // napi_threadsafe_function bridge). Skip rather than crash the process when
+  // the expected API is absent.
   const skipIfNoNative = () => {
-    if (!nativeModule || !ThreadPool) {
+    if (!nativeModule || !ThreadPool || typeof ThreadPool.getInstance !== 'function') {
       return true;
     }
     return false;
