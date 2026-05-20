@@ -66,6 +66,10 @@ jobs:
     name: Coverage
     needs: test
     runs-on: ubuntu-latest
+    # Non-blocking: coverage is for visibility (Codecov), not a gate. The
+    # @vitest/coverage-v8 report generation is currently unstable, so a
+    # failure here must not fail the CI run.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
