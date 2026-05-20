@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-20
+
 ### Added
 - Complete CLI tool for project scaffolding and development
 - Comprehensive getting started guide and documentation
@@ -88,5 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Various bug fixes and improvements
 
-[Unreleased]: https://github.com/Braineanear/nexurejs/compare/v0.3.1...HEAD
-[0.3.1]: https://github.com/Braineanear/nexurejs/releases/tag/v0.3.1
+[Unreleased]: https://github.com/nexurejs/nexurejs/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/nexurejs/nexurejs/compare/v0.3.1...v1.3.0
+[0.3.1]: https://github.com/nexurejs/nexurejs/releases/tag/v0.3.1

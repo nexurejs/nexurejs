@@ -1,6 +1,6 @@
 {
   "name": "nexurejs",
-  "version": "1.3.0-phase2",
+  "version": "1.3.0",
   "description": "Ultimate high-performance Node.js framework with SIMD acceleration, native memory management, and advanced optimization. 3-8x faster than Express.js with built-in security and monitoring.",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -13,7 +13,6 @@
     "dev:native": "npm run build:native && npm run dev",
     "dev:debug": "NODE_OPTIONS=\"--inspect\" npm run dev",
     "dev:hot": "npm run dev:watch",
-
     "// === BUILD ===": "",
     "build": "node scripts/build.js",
     "build:ts": "tsc",
@@ -25,14 +24,12 @@
     "build:all": "npm run build:native && npm run build:ts && npm run bundle",
     "build:clean": "npm run clean && npm run build:all",
     "build:watch": "tsc -w",
-
     "// === BUNDLE & PACKAGE ===": "",
     "bundle": "node scripts/bundle.js",
     "bundle:prod": "NODE_ENV=production node scripts/bundle.js",
     "bundle:analyze": "NODE_ENV=production ANALYZE=true node scripts/bundle.js",
     "package": "npm run build:prod && npm pack",
     "package:dry": "npm pack --dry-run",
-
     "// === TESTING ===": "",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
@@ -54,7 +51,6 @@
     "test:ci": "npm run build:ts && npm run test:coverage",
     "test:regression": "npm run benchmark:regression && npm run test:performance",
     "test:performance": "node test/performance/http-server.js",
-
     "// === BENCHMARKING ===": "",
     "benchmark": "node benchmarks/comprehensive-suite.js",
     "benchmark:native": "node benchmarks/index.js",
@@ -63,15 +59,14 @@
     "benchmark:report": "node benchmarks/visualize.js",
     "benchmark:regression": "node scripts/benchmark-regression.js",
     "benchmark:all": "npm run benchmark:framework && npm run benchmark:native && npm run benchmark:compare && npm run benchmark:report",
-    "benchmark:comprehensive": "node benchmarks/comprehensive-suite.js",
+    "benchmark:comprehensive": "node benchmarks/comprehensive-benchmark-suite.js",
     "benchmark:vs": "node benchmarks/framework-comparison.js",
     "benchmark:quick": "node benchmarks/run.js --quick",
     "benchmark:detailed": "node benchmarks/run.js --detailed",
     "benchmark:simple": "node benchmarks/simple-benchmark.js",
-    "benchmark:advanced": "node benchmarks/advanced-benchmark.js",
+    "benchmark:advanced": "node benchmarks/advanced-benchmark-system.cjs",
     "benchmark:comparison": "node benchmarks/framework-comparison-benchmark.js",
     "benchmark:load": "node benchmarks/load-test-benchmark.js",
-    "benchmark:comprehensive": "node benchmarks/comprehensive-benchmark-suite.js",
     "benchmark:enterprise": "node benchmarks/advanced-enterprise-benchmark.js",
     "benchmark:realtime": "node benchmarks/realtime-analytics-benchmark.js",
     "benchmark:ml": "node benchmarks/ml-performance-optimizer.js",
@@ -81,15 +76,12 @@
     "benchmark:advanced:all": "npm run benchmark:enterprise && npm run benchmark:realtime && npm run benchmark:ml",
     "benchmark:view": "node scripts/view-benchmark-report.js",
     "benchmark:list": "node scripts/view-benchmark-report.js --list",
-
     "// === NEW REAL-WORLD BENCHMARKS ===": "",
     "benchmark:real": "node benchmarks/simple-benchmark.js",
     "benchmark:showdown": "node benchmarks/framework-showdown.js",
     "benchmark:enhanced": "node benchmarks/enhanced-framework-showdown.cjs",
-    "benchmark:advanced": "node benchmarks/advanced-benchmark-system.cjs",
     "benchmark:websocket": "node benchmarks/websocket-benchmark.js",
     "benchmark:all:new": "node benchmarks/run-all-benchmarks.js",
-
     "// === PROFILING ===": "",
     "profile": "node profiling/run.js",
     "profile:cpu": "node profiling/run.js --cpu",
@@ -98,7 +90,6 @@
     "profile:dashboard": "node profiling/dashboard/server.js",
     "profile:ci": "node profiling/run.js --ci",
     "profile:report": "node scripts/generate-profile-report.js",
-
     "// === LINTING & FORMATTING ===": "",
     "lint": "eslint . --ext .ts --ignore-pattern \"benchmarks/**\"",
     "lint:fix": "eslint . --ext .ts --fix --ignore-pattern \"benchmarks/**\"",
@@ -107,7 +98,6 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
-
     "// === MAINTENANCE ===": "",
     "clean": "node scripts/build.js --clean-only",
     "clean:prod": "rm -rf dist-prod",
@@ -115,7 +105,6 @@
     "clean:cache": "rm -rf .cache .parcel-cache .next .nuxt",
     "reset": "npm run clean:all && npm install",
     "fresh": "npm run clean && npm run build:all",
-
     "// === DEPENDENCY MANAGEMENT ===": "",
     "deps:check": "node scripts/check-deps.js",
     "deps:update": "node scripts/check-deps.js --update",
@@ -124,7 +113,6 @@
     "deps:report": "node scripts/check-deps.js --markdown",
     "deps:audit": "npm audit && npm audit fix",
     "deps:outdated": "npm outdated",
-
     "// === EXAMPLES ===": "",
     "examples:basic": "node examples/basic/simple-server.js",
     "examples:performance": "npm run build:ts && node examples/performance/index.js",
@@ -132,10 +120,8 @@
     "examples:websocket": "npm run build:ts && node examples/secure-websocket/index.js",
     "examples:all": "npm run examples:basic && npm run examples:performance && npm run examples:websocket",
     "examples:demo": "node scripts/run-examples-demo.js",
-
     "// === DOCUMENTATION ===": "",
     "docs:check": "node scripts/check-docs-links.js",
-
     "// === RELEASE & PUBLISHING ===": "",
     "release": "node scripts/release.js",
     "release:patch": "node scripts/release.js patch",
@@ -144,7 +130,6 @@
     "release:pre": "node scripts/release.js --pre",
     "release:dryrun": "node scripts/release.js --dry-run",
     "publish:dry": "npm publish --dry-run",
-
     "// === CI/CD ===": "",
     "ci:install": "npm ci",
     "ci:build": "npm run build:all",
@@ -152,7 +137,6 @@
     "ci:benchmark": "npm run benchmark:regression",
     "ci:release": "npm run ci:build && npm run ci:test && npm run release",
     "ci:deploy": "npm run ci:build && npm run ci:test && npm run deploy",
-
     "// === UTILITIES ===": "",
     "start": "npm run build && node dist/index.js",
     "serve": "npm run build:prod && node dist/index.js",
@@ -161,7 +145,6 @@
     "version": "node -e \"console.log(require('./package.json').version)\"",
     "size": "node scripts/bundle-size.js",
     "analyze": "npm run bundle:analyze",
-
     "// === HOOKS ===": "",
     "prepare": "husky",
     "pre-commit": "lint-staged",
